@@ -1,6 +1,6 @@
 import type { SdAction } from "../youcam/types";
 import { concernDef } from "./concerns";
-import { addDays, daysBetween, type Capture, type IsoDay, type Product } from "./model";
+import { addDays, daysBetween, formatDay, type Capture, type IsoDay, type Product } from "./model";
 import { checkCapture } from "./quality";
 import { computeTrend, type Trend, type TrendOptions } from "./trend";
 
@@ -119,13 +119,8 @@ export function computeVerdict(
     return done("inconclusive", "Not enough comparable photos to judge. Returning is the safe call.");
   }
   if (improving.length === 0) {
-    return done("return", `No measurable change in ${names(list)}. Return it before ${humanDay(deadline)}.`);
+    return done("return", `No measurable change in ${names(list)}. Return it before ${formatDay(deadline)}.`);
   }
   return done("mixed", `Mixed: ${names(improving)} improved, ${names(list.filter((x) => x.trend.direction !== "improving"))} did not.`);
 }
 
-/** "Nov 7": readable in the UI, computed in UTC so it never shifts a day. */
-function humanDay(day: IsoDay): string {
-  const [y, m, d] = day.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}

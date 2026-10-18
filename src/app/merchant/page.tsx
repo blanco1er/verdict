@@ -2,16 +2,9 @@ import { NavBar } from "@/components/chrome";
 import { ProductGlyph } from "@/components/icons";
 import { DemoNote } from "@/components/sheet";
 import { LargeTitle } from "@/components/ui";
+import { MERCHANT_ROWS, merchantSummary, pct } from "@/lib/demo/merchant";
 
-// SYNTHETIC rows: the merchant view aggregates anonymised verdicts per SKU.
-const ROWS = [
-  { sku: "Calming Serum 30 ml", promise: "Redness, pores · 14 days", tracking: 128, improved: 0.64, returned: 0.07, verdictDay: 16, overPromise: false },
-  { sku: "Pore Refining Toner", promise: "Pores, texture · 2 weeks", tracking: 87, improved: 0.21, returned: 0.24, verdictDay: 28, overPromise: false },
-  { sku: "Glow Vitamin C Drops", promise: "Radiance, dark spots · 4 weeks", tracking: 203, improved: 0.52, returned: 0.11, verdictDay: 22, overPromise: false },
-  { sku: "Retinol Night Cream", promise: "Fine lines · 12 weeks", tracking: 61, improved: 0.18, returned: 0.15, verdictDay: 28, overPromise: true },
-];
-
-const pct = (x: number) => `${Math.round(x * 100)}`;
+const ROWS = MERCHANT_ROWS;
 
 function standing(r: (typeof ROWS)[number]): { status: "keep" | "return" | "mixed"; label: string; note: string } {
   if (r.overPromise) return { status: "mixed", label: "Promise > window", note: "The claim takes 12 weeks; returns close at 30 days. Customers decide on an early trend." };
@@ -20,10 +13,7 @@ function standing(r: (typeof ROWS)[number]): { status: "keep" | "return" | "mixe
 }
 
 export default function MerchantPage() {
-  const tracking = ROWS.reduce((s, r) => s + r.tracking, 0);
-  const improved = ROWS.reduce((s, r) => s + r.improved * r.tracking, 0) / tracking;
-  const returned = ROWS.reduce((s, r) => s + r.returned * r.tracking, 0) / tracking;
-  const worst = [...ROWS].sort((a, b) => b.returned - a.returned)[0];
+  const { tracking, improved, returned, worst, medianLead } = merchantSummary();
   const max = Math.max(...ROWS.map((r) => Math.max(r.improved, r.returned)));
 
   return (
@@ -65,11 +55,12 @@ export default function MerchantPage() {
                 <p className="ui-stat__delta">weighted by customers</p>
               </div>
               <div className="ui-stat">
-                <p className="ui-stat__label">Verdict lead</p>
+                <p className="ui-stat__label">Median verdict</p>
                 <p className="ui-stat__value">
-                  2<small>days</small>
+                  {medianLead}
+                  <small>days</small>
                 </p>
-                <p className="ui-stat__delta">before the deadline</p>
+                <p className="ui-stat__delta">before the return deadline</p>
               </div>
             </div>
           </div>
@@ -130,7 +121,7 @@ export default function MerchantPage() {
                             </span>
                           </span>
                           <span className="vd-row-meta">
-                            {r.promise} · {r.tracking} tracking · verdict on day {r.verdictDay}
+                            {r.promise} · {r.tracking} tracking · median verdict on day {r.medianVerdictDay}
                           </span>
                           <span className="vd-row-story">{s.note}</span>
                         </span>
@@ -151,7 +142,7 @@ export default function MerchantPage() {
                 <div className="ui-row">
                   <span className="ui-row__body">
                     <span className="ui-row__title">Returns are decided on day 29, by feel</span>
-                    <span className="ui-row__subtitle">Verdict gives the customer evidence two days earlier, and the brand an efficacy score per SKU.</span>
+                    <span className="ui-row__subtitle">Verdict gives the customer evidence {medianLead} days earlier (median), and the brand an efficacy score per SKU.</span>
                   </span>
                 </div>
               </li>

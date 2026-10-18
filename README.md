@@ -14,7 +14,7 @@ Built for the *YouCam API Skin AI & eCommerce VTO Hackathon* (2026). Mobile-firs
 
 ## Try it in 10 seconds
 
-1. Open the app: the first card is a serum whose verdict landed **17 days before the deadline**.
+1. Open the app: the first card is a serum whose verdict landed on day 13 (Nov 2), **17 days before the deadline**, from 6 comparable photos.
 2. Tap **Replay the 30-day return window**: every day is recomputed from the photos available that day, and you
    watch "Measuring" turn into "Keep it".
 3. Open the shelf: one product per outcome (keep, return, stop, still measuring).
@@ -37,7 +37,7 @@ On a computer, open `/phone` to use the app inside an iPhone frame. Light and da
   any unit is spent. Photos that differ are set aside, not averaged in.
 - **Decides on a trend, not a photo.** Least-squares slope on `raw_score` with a noise floor; `ui_score` is shown but
   never trended, because the provider calibrates it upward on purpose.
-- **Decides in time.** Daily photos in the final 4 days, verdict 2 days before the deadline. Irritation-type concerns
+- **Decides in time.** Daily photos in the final 4 days, verdict at the latest 2 days before the deadline (earlier when every promised concern clearly improves). Irritation-type concerns
   getting worse trigger **Stop** at once. A promise longer than the return window (retinol: 12 weeks vs 30 days) is
   flagged.
 - **Proof for the store.** A printable report of every photo, its quality and its scores.
@@ -70,7 +70,7 @@ Skin Simulation and Look VTO are wired in the client and shown as planned calls;
 
 ```sh
 npm install
-npm test          # vitest: 46 tests (client, tracing, costs, claims, plan, quality, trend, verdict, demo shelf, budget)
+npm test          # vitest: 61 tests, incl. cross-screen consistency (client, tracing, costs, claims, plan, quality, trend, verdict, demo shelf, budget)
 npm run dev       # http://localhost:3000
 npm run build
 ```

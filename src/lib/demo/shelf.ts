@@ -96,7 +96,7 @@ export const DEMO_SHELF: DemoItem[] = [
     darkDays: [7],
     retailer: "Online store",
     price: "$38",
-    story: "Both promised concerns improved: verdict landed 2 weeks before the deadline.",
+    story: "Both promised concerns improved: verdict landed 17 days before the deadline.",
     hue: 152,
   }),
   build({

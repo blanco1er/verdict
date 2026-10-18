@@ -5,7 +5,8 @@ import { DemoNote } from "@/components/sheet";
 import { ShelfRow } from "@/components/shelf-row";
 import { LargeTitle, Row, VerdictHero, WindowTrack, fmtDay, fmtLongDay, plural } from "@/components/ui";
 import { UserShelf } from "@/components/user-shelf";
-import { DEMO_SHELF, DEMO_TODAY, decidedOn, replay } from "@/lib/demo/shelf";
+import { DEMO_SHELF, DEMO_TODAY, replay } from "@/lib/demo/shelf";
+import { decidedSentence, trackVerdictLabel, verdictSummary } from "@/lib/demo/summary";
 import { daysBetween } from "@/lib/tracking/model";
 import { concernDef } from "@/lib/tracking/concerns";
 import { computeVerdict } from "@/lib/tracking/verdict";
@@ -20,9 +21,10 @@ const APIS = [
 export default function Today() {
   const [featured, ...rest] = DEMO_SHELF;
   const v = computeVerdict(featured.product, featured.captures, DEMO_TODAY);
-  const decided = decidedOn(featured, DEMO_TODAY);
-  const early = decided ? featured.product.returnWindowDays - decided.day : 0;
-  const todayDay = daysBetween(featured.product.purchasedOn, DEMO_TODAY);
+  const sum = verdictSummary(featured, DEMO_TODAY);
+  const sentence = decidedSentence(sum);
+  const early = sum.decided?.daysBeforeDeadline ?? 0;
+  const todayDay = sum.day;
   const frames = replay(featured, DEMO_TODAY);
 
   const verdicts = rest.map((item) => ({ item, v: computeVerdict(item.product, item.captures, DEMO_TODAY) }));
@@ -51,7 +53,7 @@ export default function Today() {
           <div className="vd-stack">
             <p className="vd-summary">
               <strong className="is-keep">{featured.product.name} is working.</strong> Keep it: the verdict landed {plural(early, "day")} before the
-              return deadline.
+              return deadline, on {fmtDay(sum.decided?.on ?? DEMO_TODAY)}.
               {back && (
                 <>
                   {" "}
@@ -70,14 +72,16 @@ export default function Today() {
                 href={`/product?id=${featured.product.id}`}
                 compact
                 meta={
-                  decided && (
+                  sentence && (
                     <>
-                      Decided on day {decided.day}, <b>{plural(early, "day")} before the deadline</b>, from {plural(v.usableCaptures, "comparable photo")}.
+                      {sentence.lead}
+                      <b>{sentence.strong}</b>
+                      {sentence.tail}
                     </>
                   )
                 }
               >
-                <WindowTrack product={featured.product} frames={frames} day={todayDay} todayDay={todayDay} decisionDate={v.decisionDate} />
+                <WindowTrack product={featured.product} frames={frames} day={todayDay} todayDay={todayDay} verdict={trackVerdictLabel(sum)} />
               </VerdictHero>
               <ul className="ui-list" style={{ borderRadius: 0, borderTop: "0.5px solid var(--separator)" }}>
                 <li>

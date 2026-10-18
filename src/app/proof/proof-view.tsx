@@ -13,6 +13,7 @@ import { concernDef } from "@/lib/tracking/concerns";
 import type { IsoDay } from "@/lib/tracking/model";
 import { checkCapture } from "@/lib/tracking/quality";
 import { computeVerdict } from "@/lib/tracking/verdict";
+import { verdictSummary } from "@/lib/demo/summary";
 
 const noop = () => () => {};
 
@@ -44,11 +45,12 @@ export function ProofView({ demo, id, demoToday }: { demo: DemoItem | null; id: 
   const today = demo ? demoToday : (localToday ?? demoToday);
   const { product, captures } = item;
   const v = computeVerdict(product, captures, today);
+  const sum = verdictSummary(item, today);
   const seen = captures.filter((c) => c.takenOn <= today);
   const base = seen.find((c) => checkCapture(c.quality).ok);
 
   async function share() {
-    const text = `${product.name}: ${STATUS[v.status].label}. ${v.headline} Measured with YouCam AI Skin Analysis, ${v.usableCaptures} comparable photos.`;
+    const text = `${product.name}: ${STATUS[v.status].label}. ${v.headline} Measured with YouCam AI Skin Analysis, ${sum.decided ? `decided ${fmtDay(sum.decided.on)} from ${sum.decided.fromPhotos}` : sum.comparableSoFar} comparable photos.`;
     try {
       if (navigator.share) return void (await navigator.share({ title: `Verdict report: ${product.name}`, text, url: window.location.href }));
       await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
@@ -96,9 +98,19 @@ export function ProofView({ demo, id, demoToday }: { demo: DemoItem | null; id: 
               <dd>{fmtDay(v.deadline)}</dd>
               <dt>Tracked</dt>
               <dd>{product.concerns.map((c) => concernDef(c).label).join(", ")}</dd>
-              <dt>Comparable photos</dt>
+              <dt>{sum.decided ? "Decided" : "Verdict due"}</dt>
+              <dd>{sum.decided ? `${fmtDay(sum.decided.on)} (day ${sum.decided.day})` : fmtDay(sum.dueOn)}</dd>
+              {sum.decided && (
+                <>
+                  <dt>Ahead of the deadline</dt>
+                  <dd>{sum.decided.daysBeforeDeadline} days</dd>
+                  <dt>Decided from</dt>
+                  <dd>{sum.decided.fromPhotos} comparable photos</dd>
+                </>
+              )}
+              <dt>Comparable photos so far</dt>
               <dd>
-                {v.usableCaptures} of {seen.length}
+                {sum.comparableSoFar} of {sum.photosSoFar}
               </dd>
             </dl>
             <p className="vd-verdict__line mt-4" data-status={v.status} style={{ color: "var(--_ct)" }}>

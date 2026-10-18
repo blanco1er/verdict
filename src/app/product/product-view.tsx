@@ -10,6 +10,7 @@ import { Alert, DemoNote, Sheet } from "@/components/sheet";
 import { LargeTitle, Row, STATUS, VerdictHero, WindowTrack, fmtDay, plural } from "@/components/ui";
 import { toast } from "@/design-system/motion.js";
 import { replay, type DemoItem } from "@/lib/demo/shelf";
+import { decidedSentence, trackVerdictLabel, verdictSummary } from "@/lib/demo/summary";
 import { deleteUserProduct, loadUserItems, useLocalToday } from "@/lib/demo/store";
 import { concernDef, simulationFor } from "@/lib/tracking/concerns";
 import { addDays, daysBetween, type IsoDay } from "@/lib/tracking/model";
@@ -82,7 +83,9 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
   const asOf = addDays(product.purchasedOn, day);
   const v = computeVerdict(product, captures, asOf);
   const decisionDay = daysBetween(product.purchasedOn, v.decisionDate);
-  const firstFinal = frames.find((f) => f.status !== "collecting" && f.day <= todayDay);
+  // One source of truth for every date and count in the hero and the track (same as Today and Proof).
+  const sum = verdictSummary(item, asOf);
+  const sentence = decidedSentence(sum);
   const replaying = day !== todayDay;
 
   // The verdict moment: remember when the status flips while the user replays or scrubs.
@@ -96,17 +99,18 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
     if (changes > 0 && v.status === "keep" && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(14);
   }, [changes, v.status]);
 
-  const meta =
-    firstFinal && day >= firstFinal.day && v.status !== "collecting" ? (
-      <>
-        Decided on day {firstFinal.day}, <b>{plural(win - firstFinal.day, "day")} before the return deadline</b>, from {plural(v.usableCaptures, "comparable photo")}.
-      </>
-    ) : v.status === "collecting" ? (
-      <>
-        {plural(v.usableCaptures, "comparable photo")} so far. Next photo {v.nextCaptureOn ? fmtDay(v.nextCaptureOn) : "today"}; verdict due{" "}
-        <b>{fmtDay(v.decisionDate)}</b>.
-      </>
-    ) : null;
+  const meta = sentence ? (
+    <>
+      {sentence.lead}
+      <b>{sentence.strong}</b>
+      {sentence.tail}
+    </>
+  ) : v.status === "collecting" ? (
+    <>
+      {plural(sum.comparableSoFar, "comparable photo")} so far. Next photo {v.nextCaptureOn ? fmtDay(v.nextCaptureOn) : "today"}; verdict due{" "}
+      <b>{fmtDay(sum.dueOn)}</b>.
+    </>
+  ) : null;
 
   async function share() {
     const url = window.location.href.split("&replay")[0];
@@ -150,7 +154,7 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
                   frames={frames}
                   day={day}
                   todayDay={todayDay}
-                  decisionDate={v.decisionDate}
+                  verdict={trackVerdictLabel(sum)}
                   input={
                     <>
                       <input

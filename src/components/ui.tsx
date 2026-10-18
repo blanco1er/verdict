@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { CSSProperties, ReactNode } from "react";
 import { Icon, MARK_PATH, ProductGlyph, type IconName } from "@/components/icons";
 import type { ReplayFrame } from "@/lib/demo/shelf";
-import { addDays, daysBetween, type IsoDay, type Product } from "@/lib/tracking/model";
+import { addDays, formatDay, type IsoDay, type Product } from "@/lib/tracking/model";
 import type { VerdictStatus } from "@/lib/tracking/verdict";
 
 export const STATUS: Record<VerdictStatus, { label: string; word: string }> = {
@@ -39,10 +39,8 @@ export function StatusLabel({ status, className = "" }: { status: VerdictStatus;
   );
 }
 
-export function fmtDay(day: IsoDay): string {
-  const [y, m, d] = day.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-}
+/** Same formatter as the verdict engine and the summary (lib/tracking/model). */
+export const fmtDay = formatDay;
 
 /** "Thursday, November 5": weekday computed, never typed. */
 export function fmtLongDay(day: IsoDay): string {
@@ -145,18 +143,19 @@ export function WindowTrack({
   frames,
   day,
   todayDay,
-  decisionDate,
+  verdict,
   input,
 }: {
   product: Product;
   frames: ReplayFrame[];
   day: number;
   todayDay: number;
-  decisionDate: IsoDay;
+  /** From trackVerdictLabel(): the real decision date once known, else the scheduled one. */
+  verdict: { label: string; date: string; day: number };
   input?: ReactNode;
 }) {
   const w = product.returnWindowDays;
-  const decisionDay = daysBetween(product.purchasedOn, decisionDate);
+  const decisionDay = verdict.day;
   const cells = Array.from({ length: w + 1 }, (_, d) => frames[d] ?? null);
   return (
     <div className="vd-track">
@@ -179,7 +178,7 @@ export function WindowTrack({
           Bought <b>{fmtDay(product.purchasedOn)}</b>
         </span>
         <span>
-          Verdict <b>{fmtDay(decisionDate)}</b>
+          {verdict.label} <b>{verdict.date}</b>
         </span>
         <span>
           Return by <b>{fmtDay(addDays(product.purchasedOn, w))}</b>

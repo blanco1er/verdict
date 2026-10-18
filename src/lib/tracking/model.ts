@@ -58,3 +58,9 @@ export function addDays(day: IsoDay, days: number): IsoDay {
 export function daysBetween(from: IsoDay, to: IsoDay): number {
   return dayIndex(to) - dayIndex(from);
 }
+
+/** "Nov 2": the one date format used on every screen, computed in UTC so it never shifts a day. */
+export function formatDay(day: IsoDay): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
