@@ -1,4 +1,7 @@
-import { Card, PageHeader, SectionTitle } from "@/components/ui";
+import { NavBar } from "@/components/chrome";
+import { ProductGlyph } from "@/components/icons";
+import { DemoNote } from "@/components/sheet";
+import { LargeTitle } from "@/components/ui";
 
 // SYNTHETIC rows: the merchant view aggregates anonymised verdicts per SKU.
 const ROWS = [
@@ -8,86 +11,171 @@ const ROWS = [
   { sku: "Retinol Night Cream", promise: "Fine lines · 12 weeks", tracking: 61, improved: 0.18, returned: 0.15, verdictDay: 28, overPromise: true },
 ];
 
-const pct = (x: number) => `${Math.round(x * 100)}%`;
+const pct = (x: number) => `${Math.round(x * 100)}`;
+
+function standing(r: (typeof ROWS)[number]): { status: "keep" | "return" | "mixed"; label: string; note: string } {
+  if (r.overPromise) return { status: "mixed", label: "Promise > window", note: "The claim takes 12 weeks; returns close at 30 days. Customers decide on an early trend." };
+  if (r.improved < 0.3) return { status: "return", label: "Review the claim", note: "Few customers see the promised change: the claim is driving returns." };
+  return { status: "keep", label: "Badge eligible", note: "Can show “Measured with YouCam AI Skin Analysis” on reviews." };
+}
 
 export default function MerchantPage() {
   const tracking = ROWS.reduce((s, r) => s + r.tracking, 0);
   const improved = ROWS.reduce((s, r) => s + r.improved * r.tracking, 0) / tracking;
+  const returned = ROWS.reduce((s, r) => s + r.returned * r.tracking, 0) / tracking;
+  const worst = [...ROWS].sort((a, b) => b.returned - a.returned)[0];
+  const max = Math.max(...ROWS.map((r) => Math.max(r.improved, r.returned)));
+
   return (
     <>
-      <PageHeader />
-      <section className="rise">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-accent-ink">For brands and retailers</p>
-        <h1 className="mt-1 text-[28px] font-semibold leading-tight tracking-[-0.03em]">Measured efficacy, per product</h1>
-        <p className="mt-2 text-[15px] leading-6 text-muted">
-          Anonymised verdicts from customers who tracked a product: did the promised concern measurably improve before the return deadline?
-        </p>
-      </section>
+      <NavBar title="Brands" />
+      <main className="vd-page">
+        <LargeTitle title="Brands">
+          <span>Measured efficacy per product</span>
+          <DemoNote />
+        </LargeTitle>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Kpi value={tracking.toLocaleString("en-US")} label="customers tracking" />
-        <Kpi value={pct(improved)} label="saw the promise" />
-        <Kpi value="2 days" label="verdict before deadline" />
-      </div>
+        <div className="vd-stack">
+          <p className="vd-summary">
+            <strong>{tracking.toLocaleString("en-US")} customers</strong> are tracking {ROWS.length} products. {pct(improved)}% saw the promised change
+            before their return deadline. <strong className="is-return">{worst.sku}</strong> is driving returns at {pct(worst.returned)}%.
+          </p>
 
-      <SectionTitle aside={<span className="text-[12px] text-muted">improved vs returned</span>}>By product</SectionTitle>
-      <ul className="flex flex-col gap-3">
-        {ROWS.map((r) => (
-          <li key={r.sku}>
-            <Card as="article" className="p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <h2 className="text-[15.5px] font-semibold tracking-tight">{r.sku}</h2>
-                <span className="text-[12px] text-muted tabular-nums">{r.tracking} tracking</span>
+          <div className="vd-panel">
+            <div className="ui-stats vd-stats">
+              <div className="ui-stat">
+                <p className="ui-stat__label">Customers tracking</p>
+                <p className="ui-stat__value">{tracking.toLocaleString("en-US")}</p>
+                <p className="ui-stat__delta">across {ROWS.length} SKUs</p>
               </div>
-              <p className="mt-0.5 text-[12.5px] text-muted">Promise: {r.promise}</p>
-              <Bar label="Improved" value={r.improved} color="var(--keep)" />
-              <Bar label="Returned" value={r.returned} color="var(--return)" />
-              {r.overPromise ? (
-                <p className="mt-3 rounded-xl bg-mixed/10 px-3 py-2 text-[12.5px] leading-5 text-mixed">
-                  Promise (12 weeks) is longer than the 30-day return window: customers decide on an early trend.
+              <div className="ui-stat">
+                <p className="ui-stat__label">Saw the promise</p>
+                <p className="ui-stat__value">
+                  {pct(improved)}
+                  <small>%</small>
                 </p>
-              ) : r.improved < 0.3 ? (
-                <p className="mt-3 rounded-xl bg-return/10 px-3 py-2 text-[12.5px] leading-5 text-return">
-                  Few customers see the promised change: review the claim before it drives more returns.
+                <p className="ui-stat__delta">measured, not self-reported</p>
+              </div>
+              <div className="ui-stat">
+                <p className="ui-stat__label">Returned</p>
+                <p className="ui-stat__value">
+                  {pct(returned)}
+                  <small>%</small>
                 </p>
-              ) : (
-                <p className="mt-3 text-[12.5px] leading-5 text-muted">Eligible for a &ldquo;Measured with YouCam AI Skin Analysis&rdquo; badge on reviews.</p>
-              )}
-            </Card>
-          </li>
-        ))}
-      </ul>
+                <p className="ui-stat__delta">weighted by customers</p>
+              </div>
+              <div className="ui-stat">
+                <p className="ui-stat__label">Verdict lead</p>
+                <p className="ui-stat__value">
+                  2<small>days</small>
+                </p>
+                <p className="ui-stat__delta">before the deadline</p>
+              </div>
+            </div>
+          </div>
 
-      <Card>
-        <SectionTitle>Why it matters</SectionTitle>
-        <ul className="mt-3 space-y-2 text-[14px] leading-6">
-          <li>Returns are decided on day 29 by feel. Verdict gives the customer evidence on day 28, and the brand an efficacy score per SKU.</li>
-          <li>Claims that over-promise show up in the data before they show up in the returns.</li>
-          <li>Only aggregates are shared with the brand. Photos never leave the customer&apos;s account.</li>
-        </ul>
-      </Card>
-      <p className="px-1 text-[12px] text-muted">All numbers on this screen are synthetic demo data.</p>
+          <div className="vd-cols">
+            <section aria-labelledby="b-h">
+              <div className="vd-section-title">
+                <h2 id="b-h">Improved vs returned</h2>
+                <p>share of customers</p>
+              </div>
+              <div className="vd-panel vd-panel--pad">
+                <div className="vd-bars" role="list">
+                  {ROWS.map((r) => (
+                    <div key={r.sku} className="vd-bars__row" role="listitem" aria-label={`${r.sku}: ${pct(r.improved)}% improved, ${pct(r.returned)}% returned`}>
+                      <div className="vd-bars__name">
+                        <b className="font-medium">{r.sku}</b>
+                        <span>
+                          {pct(r.improved)}% · {pct(r.returned)}%
+                        </span>
+                      </div>
+                      <div className="vd-bars__bar" aria-hidden>
+                        <span className="vd-bars__seg is-improved" style={{ width: `${(r.improved / max) * 100}%` }} />
+                        <span className="vd-bars__seg is-returned" style={{ width: `${(r.returned / max) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <ul className="vd-legend">
+                  <li>
+                    <i className="is-c1" />
+                    Promised concern improved
+                  </li>
+                  <li>
+                    <i className="is-c2" />
+                    Returned
+                  </li>
+                </ul>
+              </div>
+            </section>
+
+            <section className="ui-list-section vd-shelf" aria-labelledby="p-h">
+              <div className="ui-list__header">
+                <strong id="p-h">By product</strong>
+                <span>{ROWS.length} SKUs</span>
+              </div>
+              <ul className="ui-list">
+                {ROWS.map((r) => {
+                  const s = standing(r);
+                  return (
+                    <li key={r.sku}>
+                      <div className="ui-row">
+                        <ProductGlyph name={r.sku} />
+                        <span className="ui-row__body">
+                          <span className="ui-row__title">{r.sku}</span>
+                          <span className="vd-row-meta">
+                            <span className="vd-status" data-status={s.status}>
+                              {s.label}
+                            </span>
+                          </span>
+                          <span className="vd-row-meta">
+                            {r.promise} · {r.tracking} tracking · verdict on day {r.verdictDay}
+                          </span>
+                          <span className="vd-row-story">{s.note}</span>
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          </div>
+
+          <section className="ui-list-section" aria-labelledby="y-h">
+            <div className="ui-list__header">
+              <strong id="y-h">Why it matters</strong>
+            </div>
+            <ul className="ui-list">
+              <li>
+                <div className="ui-row">
+                  <span className="ui-row__body">
+                    <span className="ui-row__title">Returns are decided on day 29, by feel</span>
+                    <span className="ui-row__subtitle">Verdict gives the customer evidence two days earlier, and the brand an efficacy score per SKU.</span>
+                  </span>
+                </div>
+              </li>
+              <li>
+                <div className="ui-row">
+                  <span className="ui-row__body">
+                    <span className="ui-row__title">Over-promising shows up before the returns do</span>
+                    <span className="ui-row__subtitle">A claim that takes 12 weeks cannot be judged in a 30-day window.</span>
+                  </span>
+                </div>
+              </li>
+              <li>
+                <div className="ui-row">
+                  <span className="ui-row__body">
+                    <span className="ui-row__title">Brands see aggregates only</span>
+                    <span className="ui-row__subtitle">Photos never leave the customer&apos;s account.</span>
+                  </span>
+                </div>
+              </li>
+            </ul>
+            <p className="ui-list__footer">All numbers on this screen are synthetic demo data.</p>
+          </section>
+        </div>
+      </main>
     </>
-  );
-}
-
-function Kpi({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="card px-3 py-3.5 text-center">
-      <div className="text-[20px] font-semibold tracking-tight tabular-nums">{value}</div>
-      <div className="mt-0.5 text-[11.5px] leading-4 text-muted">{label}</div>
-    </div>
-  );
-}
-
-function Bar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="mt-2.5 grid grid-cols-[68px_1fr_40px] items-center gap-2.5 text-[12.5px]">
-      <span className="text-muted">{label}</span>
-      <span className="h-2 overflow-hidden rounded-full bg-line">
-        <span className="block h-full rounded-full" style={{ width: pct(value), background: color }} />
-      </span>
-      <span className="text-right font-semibold tabular-nums">{pct(value)}</span>
-    </div>
   );
 }

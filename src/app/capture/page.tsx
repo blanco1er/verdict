@@ -23,7 +23,7 @@ async function Capture({ searchParams }: { searchParams: SP }) {
   return (
     <CaptureFlow
       id={id}
-      demo={item ? { name: item.product.name, concerns: item.product.concerns, hue: item.hue } : null}
+      demo={item ? { name: item.product.name, concerns: item.product.concerns } : null}
       baseline={baseline}
       mode={youCamMode()}
       liveUploads={publicLiveEnabled()}

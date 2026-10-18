@@ -21,9 +21,9 @@ function snapshot() {
 }
 const empty: ReturnType<typeof loadUserItems> = [];
 
+/** Products the visitor added: they live on the real calendar, in this browser only. */
 export function UserShelf() {
   const items = useSyncExternalStore(subscribe, snapshot, () => empty);
-  // Products the visitor adds live on the real calendar, not the demo date.
   const today = useLocalToday();
   if (!today || items.length === 0) return null;
   return (
@@ -33,4 +33,8 @@ export function UserShelf() {
       ))}
     </>
   );
+}
+
+export function useUserItemCount(): number {
+  return useSyncExternalStore(subscribe, snapshot, () => empty).length;
 }

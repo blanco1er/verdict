@@ -45,7 +45,7 @@ describe("verdict before the return deadline", () => {
   it("says return at the decision date when nothing moved", () => {
     const v = computeVerdict(product, series([60, 61, 60, 59, 60, 61], [70, 69, 70, 71, 70, 70]), "2026-10-29");
     expect(v.status).toBe("return");
-    expect(v.headline).toMatch(/Return it before 2026-10-31/);
+    expect(v.headline).toMatch(/Return it before Oct 31/);
   });
 
   it("reports mixed results at the decision date", () => {

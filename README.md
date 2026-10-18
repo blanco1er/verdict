@@ -20,8 +20,10 @@ Built for the *YouCam API Skin AI & eCommerce VTO Hackathon* (2026). Mobile-firs
 3. Open the shelf: one product per outcome (keep, return, stop, still measuring).
 4. **Take a photo** → consent → camera (or *Use a sample*) → on-device quality gate → analysis, with every YouCam API
    call listed.
-5. **Add** a product: paste its claim; Verdict picks the concerns and prices the whole window in units before the
+5. **Add** a product (the + button): paste its claim; Verdict picks the concerns and prices the whole window in units before the
    first photo.
+
+On a computer, open `/phone` to use the app inside an iPhone frame. Light and dark mode follow the system.
 
 > **Synthetic data until the API key is wired.** By default the server runs in mock mode: products and scores are
 > generated, shaped exactly like the documented Skin Analysis responses, and labelled "Synthetic data" on every
@@ -81,7 +83,8 @@ Never commit keys.
 - Cosmetic guidance only, not medical advice. Photos need explicit consent and can be deleted.
 - Noise thresholds (`noiseSigma`, `minEffect` in `src/lib/tracking/trend.ts`) are provisional until the 5-photo
   calibration with the live API.
-- `docs/screenshots/`: mock-mode screens (synthetic data), phone and desktop.
+- `docs/screenshots/`: mock-mode screens (synthetic data), iPhone, iPad and desktop, light and dark. Older screens are in `docs/screenshots/archives/`.
+- `src/design-system/`: the shared design system (tokens, `ui-` components, spring motion), copied in so the repo is self-contained.
 
 ## License
 

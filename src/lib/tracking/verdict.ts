@@ -119,7 +119,13 @@ export function computeVerdict(
     return done("inconclusive", "Not enough comparable photos to judge. Returning is the safe call.");
   }
   if (improving.length === 0) {
-    return done("return", `No measurable change in ${names(list)}. Return it before ${deadline}.`);
+    return done("return", `No measurable change in ${names(list)}. Return it before ${humanDay(deadline)}.`);
   }
   return done("mixed", `Mixed: ${names(improving)} improved, ${names(list.filter((x) => x.trend.direction !== "improving"))} did not.`);
+}
+
+/** "Nov 7": readable in the UI, computed in UTC so it never shifts a day. */
+function humanDay(day: IsoDay): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }

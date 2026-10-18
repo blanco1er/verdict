@@ -1,9 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useSyncExternalStore } from "react";
-import { Logo, PageHeader, STATUS_STYLE, StatusPill, fmtDay } from "@/components/ui";
-import { loadUserItems, useLocalToday } from "@/lib/demo/store";
+import { NavBar } from "@/components/chrome";
+import { Icon, Logo } from "@/components/icons";
+import { DemoNote } from "@/components/sheet";
+import { LargeTitle, STATUS, StatusLabel, fmtDay } from "@/components/ui";
+import { toast } from "@/design-system/motion.js";
 import type { DemoItem } from "@/lib/demo/shelf";
+import { loadUserItems, useLocalToday } from "@/lib/demo/store";
 import { concernDef } from "@/lib/tracking/concerns";
 import type { IsoDay } from "@/lib/tracking/model";
 import { checkCapture } from "@/lib/tracking/quality";
@@ -16,78 +21,143 @@ export function ProofView({ demo, id, demoToday }: { demo: DemoItem | null; id: 
   const userJson = useSyncExternalStore(noop, () => (demo ? "" : JSON.stringify(loadUserItems().find((u) => u.product.id === id) ?? null)), () => "");
   const localToday = useLocalToday();
   const item = demo ?? (userJson ? (JSON.parse(userJson) as DemoItem | null) : null);
-  if (!item) return <PageHeader back={{ href: "/", label: "Today" }} />;
+  if (!item) {
+    return (
+      <>
+        <NavBar title="Proof" back={{ href: "/", label: "Today" }} />
+        <main className="vd-page vd-page--narrow">
+          <LargeTitle title="Proof" />
+          <div className="vd-panel ui-empty">
+            <span className="ui-empty__icon">
+              <Icon name="doc" />
+            </span>
+            <h3>No product to report on</h3>
+            <p>This product is not stored in this browser. Open one from the shelf to see its report.</p>
+            <Link href="/" className="ui-button ui-button--prominent ui-button--lg">
+              Open the shelf
+            </Link>
+          </div>
+        </main>
+      </>
+    );
+  }
   const today = demo ? demoToday : (localToday ?? demoToday);
   const { product, captures } = item;
   const v = computeVerdict(product, captures, today);
   const seen = captures.filter((c) => c.takenOn <= today);
   const base = seen.find((c) => checkCapture(c.quality).ok);
+
+  async function share() {
+    const text = `${product.name}: ${STATUS[v.status].label}. ${v.headline} Measured with YouCam AI Skin Analysis, ${v.usableCaptures} comparable photos.`;
+    try {
+      if (navigator.share) return void (await navigator.share({ title: `Verdict report: ${product.name}`, text, url: window.location.href }));
+      await navigator.clipboard.writeText(`${text}\n${window.location.href}`);
+      toast({ title: "Report summary copied", detail: "Paste it into the store's return form.", tone: "ok" });
+    } catch {
+      /* share sheet dismissed */
+    }
+  }
+
   return (
     <>
-      <div className="no-print">
-        <PageHeader back={{ href: `/product?id=${encodeURIComponent(id)}`, label: product.name }} />
-      </div>
-      <article className="card rise p-6">
-        <header className="flex items-start justify-between gap-3 border-b border-line pb-4">
-          <div className="flex items-center gap-3">
-            <Logo />
-            <div>
-              <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">Verdict report</p>
-              <h1 className="text-[20px] font-semibold tracking-tight">{product.name}</h1>
-            </div>
-          </div>
-          <StatusPill status={v.status} />
-        </header>
-        <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
-          <dt className="text-muted">Bought</dt>
-          <dd className="text-right tabular-nums">{fmtDay(product.purchasedOn)}</dd>
-          <dt className="text-muted">Return deadline</dt>
-          <dd className="text-right tabular-nums">{fmtDay(v.deadline)}</dd>
-          <dt className="text-muted">Tracked concerns</dt>
-          <dd className="text-right">{product.concerns.map((c) => concernDef(c).label).join(", ")}</dd>
-          <dt className="text-muted">Comparable photos</dt>
-          <dd className="text-right tabular-nums">{v.usableCaptures} of {seen.length}</dd>
-        </dl>
-        <p className="mt-4 rounded-2xl px-4 py-3 text-[14.5px] font-semibold leading-6" style={{ background: `color-mix(in srgb, ${STATUS_STYLE[v.status].color} 10%, transparent)`, color: STATUS_STYLE[v.status].color }}>
-          {v.headline}
-        </p>
-        <p className="mt-3 text-[13px] leading-5 text-muted">“{product.claim}”</p>
+      <NavBar
+        title="Proof"
+        back={{ href: `/product?id=${encodeURIComponent(id)}`, label: product.name }}
+        trailing={
+          <button type="button" className="ui-icon-button ui-glass vd-glass-btn" onClick={share} aria-label="Share the report" title="Share">
+            <Icon name="share" />
+          </button>
+        }
+      />
+      <main className="vd-page vd-page--narrow">
+        <LargeTitle title="Proof">
+          <span>{product.name}</span>
+          {demo && <DemoNote />}
+        </LargeTitle>
 
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full text-left text-[12.5px] tabular-nums">
-            <thead className="text-[11px] uppercase tracking-wide text-muted">
-              <tr className="border-b border-line">
-                <th className="py-2 pr-2 font-semibold">Date</th>
-                {product.concerns.map((c) => (
-                  <th key={c} className="py-2 pr-2 font-semibold">{concernDef(c).label} <span className="normal-case">raw</span></th>
-                ))}
-                <th className="py-2 font-semibold">Photo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {seen.map((c) => {
-                const q = checkCapture(c.quality, base?.quality);
-                return (
-                  <tr key={c.id} className="border-b border-line/70">
-                    <td className="py-2 pr-2">{fmtDay(c.takenOn)}</td>
-                    {product.concerns.map((a) => (
-                      <td key={a} className="py-2 pr-2">{c.scores[a]?.raw.toFixed(1) ?? "–"}</td>
+        <div className="vd-stack">
+          <article className="vd-panel vd-report">
+            <header className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Logo size={32} />
+                <div>
+                  <h2>Verdict report</h2>
+                  <p className="m-0 text-[length:var(--text-footnote)] text-label-secondary">Generated {fmtDay(today)}</p>
+                </div>
+              </div>
+              <StatusLabel status={v.status} />
+            </header>
+            <dl>
+              <dt>Product</dt>
+              <dd>{product.name}</dd>
+              <dt>Bought</dt>
+              <dd>{fmtDay(product.purchasedOn)}</dd>
+              <dt>Return deadline</dt>
+              <dd>{fmtDay(v.deadline)}</dd>
+              <dt>Tracked</dt>
+              <dd>{product.concerns.map((c) => concernDef(c).label).join(", ")}</dd>
+              <dt>Comparable photos</dt>
+              <dd>
+                {v.usableCaptures} of {seen.length}
+              </dd>
+            </dl>
+            <p className="vd-verdict__line mt-4" data-status={v.status} style={{ color: "var(--_ct)" }}>
+              {v.headline}
+            </p>
+            <p className="mt-2 mb-4 text-[length:var(--text-subhead)] text-label-secondary">&ldquo;{product.claim}&rdquo;</p>
+            <div className="overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    {product.concerns.map((c) => (
+                      <th key={c} className="num">
+                        {concernDef(c).label} raw
+                      </th>
                     ))}
-                    <td className={`py-2 ${q.comparable ? "text-keep" : "text-mixed"}`}>{q.comparable ? "used" : "set aside"}</td>
+                    <th>Photo</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {seen.map((c) => {
+                    const q = checkCapture(c.quality, base?.quality);
+                    return (
+                      <tr key={c.id}>
+                        <td>{fmtDay(c.takenOn)}</td>
+                        {product.concerns.map((a) => (
+                          <td key={a} className="num">
+                            {c.scores[a]?.raw.toFixed(1) ?? "–"}
+                          </td>
+                        ))}
+                        <td>
+                          <span className="vd-status" data-status={q.comparable ? "keep" : "mixed"}>
+                            {q.comparable ? "Used" : "Set aside"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <footer>
+              Measured with YouCam AI Skin Analysis (SD). Trends use raw_score with a least-squares fit and a noise floor; photos with different
+              lighting or framing are set aside. Cosmetic guidance, not medical advice.{demo ? " Synthetic demo data." : ""}
+            </footer>
+          </article>
+
+          <div className="vd-actions vd-actions--row no-print">
+            <button type="button" onClick={() => window.print()} className="ui-button ui-button--prominent ui-button--xl">
+              <Icon name="doc" />
+              Save as PDF
+            </button>
+            <button type="button" onClick={share} className="ui-button ui-button--xl">
+              <Icon name="share" />
+              Share summary
+            </button>
+          </div>
         </div>
-        <footer className="mt-5 text-[11.5px] leading-5 text-muted">
-          Measured with YouCam AI Skin Analysis (SD). Trends use raw_score with a least-squares fit and a noise floor; photos with different
-          lighting or framing are set aside. Cosmetic guidance, not medical advice.{demo ? " Synthetic demo data." : ""}
-        </footer>
-      </article>
-      <button type="button" onClick={() => window.print()} className="no-print h-12 rounded-full bg-foreground text-[15px] font-semibold text-background">
-        Save as PDF
-      </button>
+      </main>
     </>
   );
 }

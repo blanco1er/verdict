@@ -2,13 +2,18 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Card, PageHeader, SectionTitle, STATUS_STYLE, StatusPill, Swatch, TimelineChart, VerdictRing, WindowBar, fmtDay } from "@/components/ui";
-import { deleteUserProduct, loadUserItems, useLocalToday } from "@/lib/demo/store";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { NavBar } from "@/components/chrome";
+import { ChartLegend, ConcernChart } from "@/components/concern-chart";
+import { Icon } from "@/components/icons";
+import { Alert, DemoNote, Sheet } from "@/components/sheet";
+import { LargeTitle, Row, STATUS, VerdictHero, WindowTrack, fmtDay, plural } from "@/components/ui";
+import { toast } from "@/design-system/motion.js";
 import { replay, type DemoItem } from "@/lib/demo/shelf";
+import { deleteUserProduct, loadUserItems, useLocalToday } from "@/lib/demo/store";
 import { concernDef, simulationFor } from "@/lib/tracking/concerns";
 import { addDays, daysBetween, type IsoDay } from "@/lib/tracking/model";
-import { computeVerdict } from "@/lib/tracking/verdict";
+import { computeVerdict, type VerdictStatus } from "@/lib/tracking/verdict";
 import { LOOK_VTO_UNITS, skinAnalysisCost, skinSimulationCost } from "@/lib/youcam/costs";
 
 const noop = () => () => {};
@@ -27,15 +32,25 @@ export function ProductView({ demo, id, demoToday, autoplay }: { demo: DemoItem 
   if (!item) {
     return (
       <>
-        <PageHeader back={{ href: "/", label: "Today" }} />
-        <Card className="text-center">
-          <p className="text-[17px] font-semibold">This product isn&apos;t on this device.</p>
-          <p className="mt-2 text-sm leading-6 text-muted">Products you add stay in this browser only. Add it again, or open a demo product.</p>
-          <div className="mt-4 flex justify-center gap-2">
-            <Link href="/add" className="rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background">Add a product</Link>
-            <Link href="/" className="rounded-full border border-line px-4 py-2.5 text-sm font-semibold">Demo shelf</Link>
+        <NavBar title="Product" back={{ href: "/", label: "Today" }} />
+        <main className="vd-page vd-page--narrow">
+          <LargeTitle title="Not on this device" />
+          <div className="vd-panel ui-empty">
+            <span className="ui-empty__icon">
+              <Icon name="phone" />
+            </span>
+            <h3>This product lives in another browser</h3>
+            <p>Products you add are stored only in the browser you used. Add it again here, or open a product from the demo shelf.</p>
+            <div className="flex flex-wrap justify-center gap-2.5">
+              <Link href="/add" className="ui-button ui-button--prominent ui-button--lg">
+                Add a product
+              </Link>
+              <Link href="/" className="ui-button ui-button--lg">
+                Open the shelf
+              </Link>
+            </div>
           </div>
-        </Card>
+        </main>
       </>
     );
   }
@@ -49,11 +64,10 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
   const todayDay = Math.max(0, Math.min(win, daysBetween(product.purchasedOn, today)));
   const [day, setDay] = useState(autoplay ? 0 : todayDay);
   const [playing, setPlaying] = useState(autoplay);
-  const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!playing) return;
-    timer.current = setInterval(() => {
+    const t = setInterval(() => {
       setDay((d) => {
         if (d >= todayDay) {
           setPlaying(false);
@@ -61,256 +75,325 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
         }
         return d + 1;
       });
-    }, 140);
-    return () => {
-      if (timer.current) clearInterval(timer.current);
-    };
+    }, 150);
+    return () => clearInterval(t);
   }, [playing, todayDay]);
 
   const asOf = addDays(product.purchasedOn, day);
   const v = computeVerdict(product, captures, asOf);
+  const decisionDay = daysBetween(product.purchasedOn, v.decisionDate);
   const firstFinal = frames.find((f) => f.status !== "collecting" && f.day <= todayDay);
   const replaying = day !== todayDay;
 
+  // The verdict moment: remember when the status flips while the user replays or scrubs.
+  const [prevStatus, setPrevStatus] = useState<VerdictStatus>(v.status);
+  const [changes, setChanges] = useState(0);
+  if (prevStatus !== v.status) {
+    setPrevStatus(v.status);
+    setChanges((n) => n + 1);
+  }
+  useEffect(() => {
+    if (changes > 0 && v.status === "keep" && navigator.userActivation?.hasBeenActive) navigator.vibrate?.(14);
+  }, [changes, v.status]);
+
+  const meta =
+    firstFinal && day >= firstFinal.day && v.status !== "collecting" ? (
+      <>
+        Decided on day {firstFinal.day}, <b>{plural(win - firstFinal.day, "day")} before the return deadline</b>, from {plural(v.usableCaptures, "comparable photo")}.
+      </>
+    ) : v.status === "collecting" ? (
+      <>
+        {plural(v.usableCaptures, "comparable photo")} so far. Next photo {v.nextCaptureOn ? fmtDay(v.nextCaptureOn) : "today"}; verdict due{" "}
+        <b>{fmtDay(v.decisionDate)}</b>.
+      </>
+    ) : null;
+
+  async function share() {
+    const url = window.location.href.split("&replay")[0];
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: `Verdict: ${product.name}`, text: `${STATUS[v.status].label}. ${v.headline}`, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast({ title: "Link copied", detail: "Opens this product on the demo shelf.", tone: "ok" });
+    } catch {
+      /* share sheet dismissed */
+    }
+  }
+
   return (
     <>
-      <PageHeader back={{ href: "/", label: "Today" }} right={isDemo ? undefined : <span className="text-xs font-medium text-muted">On this device</span>} />
-
-      <Card className="rise">
-        <div className="flex items-start gap-3">
-          <Swatch hue={item.hue} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[12px] font-medium text-muted">{[product.brand, item.retailer, item.price].filter(Boolean).join(" · ")}</p>
-            <h1 className="text-[22px] font-semibold leading-tight tracking-tight">{product.name}</h1>
-          </div>
-        </div>
-        <div className="mt-5 flex items-center gap-5">
-          <VerdictRing status={v.status} elapsedDays={day} windowDays={win} daysLeft={v.daysToDeadline} size={132} />
-          <div className="min-w-0" aria-live="polite">
-            <StatusPill status={v.status} />
-            <p className="mt-2.5 text-[17px] font-semibold leading-snug tracking-tight">{v.headline}</p>
-            <p className="mt-1.5 text-[12.5px] text-muted tabular-nums">
-              {replaying ? `Replaying day ${day} of ${win}` : `Today · day ${day} of ${win}`} · <span className="whitespace-nowrap">{fmtDay(asOf)}</span>
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="no-print">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-[15px] font-semibold tracking-tight">Day by day</h2>
-          <button
-            type="button"
-            onClick={() => {
-              if (playing) return setPlaying(false);
-              if (day >= todayDay) setDay(0);
-              setPlaying(true);
-            }}
-            className="inline-flex h-9 items-center gap-2 rounded-full bg-foreground px-4 text-[13px] font-semibold text-background transition active:scale-95"
-          >
-            <span aria-hidden>{playing ? "❚❚" : "▶"}</span>
-            {playing ? "Pause" : day >= todayDay ? "Replay" : "Play"}
+      <NavBar
+        title={product.name}
+        back={{ href: "/", label: "Today" }}
+        trailing={
+          <button type="button" className="ui-icon-button ui-glass vd-glass-btn" onClick={share} aria-label="Share this verdict" title="Share">
+            <Icon name="share" />
           </button>
-        </div>
-        <div className="mt-4 grid gap-[3px]" style={{ gridTemplateColumns: `repeat(${frames.length}, minmax(0, 1fr))` }} aria-hidden>
-          {frames.map((f) => (
-            <button
-              key={f.day}
-              type="button"
-              tabIndex={-1}
-              onClick={() => {
-                setPlaying(false);
-                setDay(Math.min(f.day, todayDay));
-              }}
-              className="h-6 rounded-[4px] transition-opacity"
-              style={{
-                background: f.day > todayDay ? "var(--line)" : STATUS_STYLE[f.status].color,
-                opacity: f.day > todayDay ? 0.6 : f.day <= day ? 1 : 0.28,
-                outline: f.day === day ? "2px solid var(--foreground)" : undefined,
-                outlineOffset: 1,
-              }}
-              title={`Day ${f.day}: ${STATUS_STYLE[f.status].label}`}
-            />
-          ))}
-        </div>
-        <label className="mt-3 block">
-          <span className="sr-only">Day of the return window</span>
-          <input
-            type="range"
-            min={0}
-            max={todayDay}
-            value={day}
-            onChange={(e) => {
-              setPlaying(false);
-              setDay(Number(e.target.value));
-            }}
-            className="w-full"
-          />
-        </label>
-        <p className="mt-1 text-[12.5px] leading-5 text-muted">
-          {firstFinal ? (
-            <>
-              The verdict became <b className="font-semibold text-foreground">{STATUS_STYLE[firstFinal.status].label.toLowerCase()}</b> on day {firstFinal.day},{" "}
-              {win - firstFinal.day} days before the return deadline. Each day is recomputed from the photos available that day.
-            </>
-          ) : (
-            <>Each day is recomputed from the photos available that day. The verdict is due {fmtDay(v.decisionDate)}, two days before the deadline.</>
-          )}
-        </p>
-      </Card>
+        }
+      />
+      <main className="vd-page">
+        <LargeTitle title={product.name}>
+          <span>{[product.brand, item.retailer, item.price].filter(Boolean).join(" · ")}</span>
+          {isDemo ? <DemoNote /> : <span>On this device</span>}
+        </LargeTitle>
 
-      <Card>
-        <SectionTitle>The promise</SectionTitle>
-        <p className="mt-3 text-[15px] leading-6">“{product.claim}”</p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {product.concerns.map((c) => (
-            <span key={c} className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] font-semibold ring-1 ring-line">
-              {concernDef(c).label}
-            </span>
-          ))}
-          <span className="rounded-full px-2.5 py-1 text-[12px] font-medium text-muted">
-            {product.concerns.length} of 16 Skin Analysis concerns · {skinAnalysisCost(product.concerns)} units per photo
-          </span>
+        <div className="vd-cols">
+          <div className="vd-stack">
+            <section className="vd-panel relative" aria-label="Verdict">
+              {changes > 0 && v.status === "keep" && <span key={changes} className="vd-flash" aria-hidden />}
+              <VerdictHero key={`${v.status}-${changes}`} status={v.status} headline={v.headline} meta={meta} changed={changes > 0} />
+              <div className="px-5 pb-5">
+                <WindowTrack
+                  product={product}
+                  frames={frames}
+                  day={day}
+                  todayDay={todayDay}
+                  decisionDate={v.decisionDate}
+                  input={
+                    <>
+                      <input
+                        type="range"
+                        className="vd-track__input no-print"
+                        min={0}
+                        max={todayDay}
+                        value={day}
+                        onChange={(e) => {
+                          setPlaying(false);
+                          setDay(Number(e.target.value));
+                        }}
+                        style={{ width: `${((todayDay + 1) / (win + 1)) * 100}%` }}
+                        aria-label="Day of the return window"
+                        aria-valuetext={`Day ${day}, ${fmtDay(asOf)}: ${STATUS[v.status].label}`}
+                      />
+                      <span className="vd-track__focus" aria-hidden />
+                    </>
+                  }
+                />
+                <div className="vd-replay no-print">
+                  <p>
+                    <b>{replaying ? `Day ${day}` : "Today"}</b> · {fmtDay(asOf)} · day {day} of {win}
+                  </p>
+                  <button
+                    type="button"
+                    className="ui-button ui-button--tinted ui-button--lg"
+                    onClick={() => {
+                      if (playing) return setPlaying(false);
+                      if (day >= todayDay) setDay(0);
+                      setPlaying(true);
+                    }}
+                    aria-pressed={playing}
+                  >
+                    <Icon name={playing ? "pause" : "play"} filled={!playing} />
+                    {playing ? "Pause" : day >= todayDay ? "Replay" : "Play"}
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {v.status === "collecting" && (
+              <Link href={`/capture?id=${encodeURIComponent(product.id)}`} className="ui-button ui-button--prominent ui-button--xl no-print">
+                <Icon name="camera" />
+                Take today&apos;s photo
+              </Link>
+            )}
+
+            <section aria-labelledby="m-h">
+              <div className="vd-section-title">
+                <h2 id="m-h">Measurements</h2>
+                <p>raw_score · higher is better</p>
+              </div>
+              <div className="vd-panel vd-panel--pad">
+                {product.concerns.map((action, i) => (
+                  <ConcernChart key={action} product={product} captures={captures} action={action} index={i} asOfDay={day} decisionDay={decisionDay} trend={v.trends[action]} />
+                ))}
+                <ChartLegend />
+              </div>
+              <p className="vd-footnote mt-2.5">
+                YouCam also returns a display score, calibrated upward by design. Verdict shows it but decides on raw_score, with a least-squares
+                trend and a noise floor.
+              </p>
+            </section>
+          </div>
+
+          <div className="vd-stack">
+            <section className="ui-list-section" aria-labelledby="p-h">
+              <div className="ui-list__header">
+                <strong id="p-h">The promise</strong>
+              </div>
+              <ul className="ui-list vd-kv">
+                <li>
+                  <p className="vd-quote">&ldquo;{product.claim}&rdquo;</p>
+                </li>
+                <li>
+                  <Row title="Tracked" detail={product.concerns.map((c) => concernDef(c).label).join(", ")} />
+                </li>
+                <li>
+                  <Row title="Brand promise" detail={product.promisedDays ? plural(product.promisedDays, "day") : "No time stated"} />
+                </li>
+                <li>
+                  <Row title="Return window" detail={plural(win, "day")} />
+                </li>
+                <li>
+                  <Row title="Each photo" detail={`${skinAnalysisCost(product.concerns)} units`} />
+                </li>
+              </ul>
+              <p className="ui-list__footer">
+                {product.concerns.length} of 16 Skin Analysis concerns, read from the claim. Fewer concerns keep every photo in the 9-unit SD tier.
+              </p>
+            </section>
+
+            {v.promiseExceedsWindow && (
+              <div className="ui-banner ui-banner--warn" role="note">
+                <Icon name="alert" />
+                <div>
+                  <strong>The promise is longer than the return window.</strong>
+                  <p>
+                    The brand says {plural(product.promisedDays ?? 0, "day")}, the store gives {win}. Verdict judges the early trend and tells you before
+                    you lose the right to return.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {v.reasons.length > 0 && (
+              <section className="ui-list-section" aria-labelledby="w-h">
+                <div className="ui-list__header">
+                  <strong id="w-h">Why</strong>
+                </div>
+                <ul className="ui-list">
+                  {v.reasons.map((r) => (
+                    <li key={r}>
+                      <Row icon="info" title={r} />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            <NextSteps item={item} status={v.status} isDemo={isDemo} />
+          </div>
         </div>
-        <div className="mt-5">
-          <WindowBar product={product} today={asOf} decisionDate={v.decisionDate} />
-        </div>
-        {v.promiseExceedsWindow && (
-          <p className="mt-4 rounded-2xl bg-mixed/10 px-3.5 py-3 text-[13px] leading-5 text-mixed">
-            <b className="font-semibold">Promise longer than the return window.</b> The brand says {product.promisedDays} days, the store gives {win}. Verdict judges the early trend and tells you before you lose the right to return.
-          </p>
-        )}
-      </Card>
-
-      {product.concerns.map((action) => {
-        const trend = v.trends[action];
-        const last = captures.filter((c) => daysBetween(c.takenOn, asOf) >= 0 && c.scores[action]).at(-1)?.scores[action];
-        return (
-          <Card key={action}>
-            <div className="flex items-baseline justify-between gap-3">
-              <h2 className="text-[16px] font-semibold tracking-tight">{concernDef(action).label}</h2>
-              <span className={`text-[12.5px] font-semibold tabular-nums ${trend?.direction === "improving" ? "text-keep" : trend?.direction === "worsening" ? "text-return" : "text-muted"}`}>
-                {!trend || trend.direction === "insufficient"
-                  ? "Needs 3 good photos"
-                  : `${trend.change >= 0 ? "+" : "−"}${Math.abs(trend.change).toFixed(1)} pts in ${trend.spanDays} days · ${trend.direction}`}
-              </span>
-            </div>
-            <div className="mt-3">
-              <TimelineChart product={product} captures={captures} action={action} asOf={asOf} trend={trend} decisionDate={v.decisionDate} />
-            </div>
-            <p className="mt-2 text-[12px] leading-5 text-muted">
-              {last ? (
-                <>
-                  Latest YouCam score {last.ui}/100 (raw {last.raw.toFixed(1)}). The verdict uses <b className="font-semibold text-foreground">raw_score</b>: the display score is calibrated upward by design.
-                </>
-              ) : (
-                "No photo yet. Take your day-0 photo to start the baseline."
-              )}
-            </p>
-          </Card>
-        );
-      })}
-
-      {v.reasons.length > 0 && (
-        <Card>
-          <SectionTitle>Why</SectionTitle>
-          <ul className="mt-3 space-y-2 text-[14px] leading-6">
-            {v.reasons.map((r) => (
-              <li key={r} className="flex gap-2.5">
-                <span aria-hidden className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-subtle" />
-                {r}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
-      <NextSteps item={item} status={v.status} isDemo={isDemo} />
+      </main>
     </>
   );
 }
 
-function NextSteps({ item, status, isDemo }: { item: DemoItem; status: string; isDemo: boolean }) {
-  const [open, setOpen] = useState<string | null>(null);
+function NextSteps({ item, status, isDemo }: { item: DemoItem; status: VerdictStatus; isDemo: boolean }) {
+  const [sheet, setSheet] = useState<"sim" | "look" | null>(null);
+  const [confirm, setConfirm] = useState(false);
   const router = useRouter();
   const sim = simulationFor(item.product.concerns);
-  const simActive = Object.keys(sim).length;
-  const actions = [
-    {
-      id: "sim",
-      title: "See the promised result",
-      api: "YouCam AI Skin Simulation",
-      units: skinSimulationCost(Math.max(1, simActive)),
-      body: `Renders your day-0 photo with ${Object.keys(sim).join(", ") || "the promised concerns"} at 50% intensity, so you know what "working" should look like. Cached after the first render.`,
-      call: `POST /s2s/v2.0/task/skin-simulation  { src_file_id, ${Object.entries(sim).map(([k, v]) => `${k}: ${v}`).join(", ")} }`,
-    },
-    ...(status === "return" || status === "stop" || status === "mixed"
-      ? [
-          {
-            id: "look",
-            title: "Try an alternative on your face",
-            api: "YouCam Look VTO",
-            units: LOOK_VTO_UNITS,
-            body: "Before you buy the next product, try an expert look from the template catalogue on your own photo.",
-            call: "GET /s2s/v2.0/task/template/look-vto → POST /s2s/v2.0/task/look-vto  { src_file_id, template_id }",
-          },
-        ]
-      : []),
-  ];
+  const simKeys = Object.keys(sim);
+  const simUnits = skinSimulationCost(Math.max(1, simKeys.length));
+  const offerLook = status === "return" || status === "stop" || status === "mixed";
+  const id = encodeURIComponent(item.product.id);
+  const live = () =>
+    toast({ title: "Runs with the live API key", detail: "Demo mode: nothing was sent and no units were spent.", tone: "info" });
+
   return (
-    <section className="no-print flex flex-col gap-3">
-      <SectionTitle>Next</SectionTitle>
-      <div className="grid grid-cols-2 gap-3">
-        <Link
-          href={`/capture?id=${encodeURIComponent(item.product.id)}`}
-          className="inline-flex h-12 items-center justify-center rounded-full bg-foreground px-4 text-[14px] font-semibold text-background transition active:scale-[.98]"
-        >
-          Take a photo
-        </Link>
-        <Link
-          href={`/proof?id=${encodeURIComponent(item.product.id)}`}
-          className="inline-flex h-12 items-center justify-center rounded-full border border-line bg-surface px-4 text-[14px] font-semibold transition hover:border-foreground/25"
-        >
-          Proof for the store
-        </Link>
+    <section className="ui-list-section no-print" aria-labelledby="n-h">
+      <div className="ui-list__header">
+        <strong id="n-h">Next</strong>
       </div>
-      {actions.map((a) => (
-        <div key={a.id} className="card overflow-hidden">
+      <ul className="ui-list">
+        {status !== "collecting" && (
+          <li>
+            <Row href={`/capture?id=${id}`} icon="camera" title="Take a photo" subtitle="Keeps the timeline going after the verdict" />
+          </li>
+        )}
+        <li>
+          <Row href={`/proof?id=${id}`} icon="doc" title="Proof for the store" subtitle="Every photo, its quality and its scores" />
+        </li>
+        <li>
+          <Row onClick={() => setSheet("sim")} icon="compare" title="See the promised result" subtitle={`YouCam Skin Simulation · ${simUnits} units`} />
+        </li>
+        {offerLook && (
+          <li>
+            <Row onClick={() => setSheet("look")} icon="brush" title="Try an alternative on your face" subtitle={`YouCam Look VTO · ${LOOK_VTO_UNITS} units`} />
+          </li>
+        )}
+        {!isDemo && (
+          <li>
+            <Row onClick={() => setConfirm(true)} icon="trash" title="Delete product and photos" tone="destructive" chevron={false} />
+          </li>
+        )}
+      </ul>
+
+      <Sheet
+        open={sheet === "sim"}
+        onClose={() => setSheet(null)}
+        title="Promised result"
+        cancelLabel="Cancel"
+        action={
           <button
             type="button"
-            aria-expanded={open === a.id}
-            onClick={() => setOpen(open === a.id ? null : a.id)}
-            className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left"
+            className="ui-button ui-button--prominent"
+            onClick={() => {
+              setSheet(null);
+              live();
+            }}
           >
-            <span>
-              <span className="block text-[15px] font-semibold tracking-tight">{a.title}</span>
-              <span className="text-[12.5px] text-muted">
-                {a.api} · {a.units} units
-              </span>
-            </span>
-            <span aria-hidden className={`text-muted transition-transform ${open === a.id ? "rotate-90" : ""}`}>›</span>
+            Render
           </button>
-          {open === a.id && (
-            <div className="border-t border-line px-5 py-4 text-[13.5px] leading-6">
-              <p>{a.body}</p>
-              <pre className="mt-3 overflow-x-auto rounded-xl bg-foreground px-3.5 py-3 font-mono text-[11.5px] leading-5 text-background">{a.call}</pre>
-              <p className="mt-2.5 text-[12px] text-muted">Runs with the live API key. In this demo no units are spent.</p>
-            </div>
-          )}
-        </div>
-      ))}
-      {!isDemo && (
-        <button
-          type="button"
-          onClick={() => {
-            deleteUserProduct(item.product.id);
-            router.push("/");
-          }}
-          className="self-center rounded-full px-4 py-2 text-[13px] font-semibold text-return hover:bg-return/10"
-        >
-          Delete this product and its photos
-        </button>
-      )}
+        }
+      >
+        <p className="vd-sheet-lead">
+          Renders your day-0 photo with {simKeys.join(", ") || "the promised concerns"} at 50% intensity, so you know what &ldquo;working&rdquo;
+          should look like before you judge it. Cached after the first render.
+        </p>
+        <ul className="ui-list vd-kv" style={{ background: "var(--bg-grouped-tertiary)" }}>
+          <li>
+            <Row title="API" detail="Skin Simulation" />
+          </li>
+          <li>
+            <Row title="Cost" detail={`${simUnits} units, once`} />
+          </li>
+        </ul>
+        <pre className="vd-code">{`POST /s2s/v2.0/task/skin-simulation\n{ src_file_id, ${Object.entries(sim)
+          .map(([k, val]) => `${k}: ${val}`)
+          .join(", ")} }`}</pre>
+      </Sheet>
+
+      <Sheet
+        open={sheet === "look"}
+        onClose={() => setSheet(null)}
+        title="Try an alternative"
+        cancelLabel="Cancel"
+        action={
+          <button
+            type="button"
+            className="ui-button ui-button--prominent"
+            onClick={() => {
+              setSheet(null);
+              live();
+            }}
+          >
+            Try on
+          </button>
+        }
+      >
+        <p className="vd-sheet-lead">
+          Before you buy the next product, try an expert look from the YouCam template catalogue on your own photo. Nothing to return if it does not
+          suit you.
+        </p>
+        <pre className="vd-code">{`GET  /s2s/v2.0/task/template/look-vto\nPOST /s2s/v2.0/task/look-vto  { src_file_id, template_id }`}</pre>
+        <p className="vd-footnote mt-3">{LOOK_VTO_UNITS} units per try-on.</p>
+      </Sheet>
+
+      <Alert
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={`Delete ${item.product.name}?`}
+        message="Its photos and scores are removed from this browser. This cannot be undone."
+        confirmLabel="Delete"
+        onConfirm={() => {
+          deleteUserProduct(item.product.id);
+          toast({ title: "Product deleted", detail: "Its photos and scores were removed from this browser.", tone: "ok" });
+          router.push("/");
+        }}
+      />
     </section>
   );
 }

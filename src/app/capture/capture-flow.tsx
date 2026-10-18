@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Card, PageHeader, SectionTitle, Swatch } from "@/components/ui";
+import { NavBar, useImmersive } from "@/components/chrome";
+import { Icon } from "@/components/icons";
+import { DemoNote } from "@/components/sheet";
+import { LargeTitle, Row } from "@/components/ui";
+import { toast } from "@/design-system/motion.js";
 import { addUserCapture, loadUserItems } from "@/lib/demo/store";
 import { concernDef } from "@/lib/tracking/concerns";
 import type { CaptureQuality } from "@/lib/tracking/model";
@@ -21,13 +25,13 @@ type Phase =
   | { kind: "consent" }
   | { kind: "camera" }
   | { kind: "review"; url: string; size: number; quality: CaptureQuality; report: QualityReport; source: "camera" | "sample" }
-  | { kind: "analyzing"; url: string; stage: number }
+  | { kind: "analyzing"; url: string; stage: number; quality: CaptureQuality }
   | { kind: "done"; url: string; output: SkinAnalysisOutput[]; trace: TraceStep[]; units: number; mode: string; saved: boolean }
   | { kind: "error"; url?: string; message: string; trace?: TraceStep[] };
 
 interface Props {
   id: string;
-  demo: { name: string; concerns: SdAction[]; hue: number } | null;
+  demo: { name: string; concerns: SdAction[] } | null;
   baseline: CaptureQuality | null;
   mode: "mock" | "live";
   liveUploads: boolean;
@@ -35,18 +39,19 @@ interface Props {
 }
 
 const noop = () => () => {};
-const STAGES = ["Declaring the file (File API)", "Uploading to the pre-signed URL", "Starting the Skin Analysis task", "Waiting for the result"];
+const STAGES = ["Declare the file (File API)", "Upload to the pre-signed URL", "Start the Skin Analysis task", "Poll until the result is ready"];
 
 export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: Props) {
   const userJson = useSyncExternalStore(noop, () => (demo ? "" : JSON.stringify(loadUserItems().find((u) => u.product.id === id)?.product ?? null)), () => "");
   const userProduct = userJson ? (JSON.parse(userJson) as { name: string; concerns: SdAction[] } | null) : null;
-  const target = demo ?? (userProduct ? { ...userProduct, hue: 18 } : null);
+  const target = demo ?? userProduct;
   const [phase, setPhase] = useState<Phase>({ kind: "consent" });
   const [consent, setConsent] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [live, setLive] = useState<{ brightness: number; face: number | null; detector: boolean }>({ brightness: 0, face: null, detector: false });
   const [cameraError, setCameraError] = useState<string | null>(null);
+  useImmersive(phase.kind !== "consent");
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -54,7 +59,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
   }, []);
   useEffect(() => stopCamera, [stopCamera]);
 
-  // Live light / framing meter, measured on-device before any unit is spent.
+  // Live light and framing meter, measured on the phone before any unit is spent.
   useEffect(() => {
     if (phase.kind !== "camera") return;
     const canvas = document.createElement("canvas");
@@ -96,13 +101,17 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
         }
       });
     } catch (e) {
-      setCameraError(e instanceof Error && e.name === "NotAllowedError" ? "Camera permission was declined." : "No camera available here.");
+      setCameraError(
+        e instanceof Error && e.name === "NotAllowedError"
+          ? "Camera access was declined. You can allow it in your browser settings, or use the sample photo to see the full flow."
+          : "No camera is available here. Use the sample photo to see the full flow.",
+      );
     }
   }
 
   function shoot() {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !v.videoWidth) return;
     const canvas = document.createElement("canvas");
     canvas.width = v.videoWidth;
     canvas.height = v.videoHeight;
@@ -142,9 +151,9 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
     );
   }
 
-  async function analyze(url: string, size: number) {
+  async function analyze(url: string, size: number, quality: CaptureQuality) {
     if (!target) return;
-    setPhase({ kind: "analyzing", url, stage: 0 });
+    setPhase({ kind: "analyzing", url, stage: 0, quality });
     const tick = setInterval(() => setPhase((p) => (p.kind === "analyzing" ? { ...p, stage: Math.min(STAGES.length - 1, p.stage + 1) } : p)), 420);
     try {
       let res: Response;
@@ -165,20 +174,15 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
       const json = await res.json();
       clearInterval(tick);
       if (!res.ok) {
-        setPhase({ kind: "error", url, message: json.detail ? `${json.error}. ${json.detail}` : json.error ?? `HTTP ${res.status}`, trace: json.trace });
+        setPhase({ kind: "error", url, message: json.detail ? `${json.error}. ${json.detail}` : (json.error ?? `HTTP ${res.status}`), trace: json.trace });
         return;
       }
       let saved = false;
       if (!demo) {
         const scores: Record<string, { raw: number; ui: number }> = {};
         for (const o of json.output as SkinAnalysisOutput[]) if (o.type !== "all" && o.raw_score != null && o.ui_score != null) scores[o.type] = { raw: o.raw_score, ui: o.ui_score };
-        saved = addUserCapture(id, {
-          id: `u-${Date.now()}`,
-          productId: id,
-          takenOn: day,
-          quality: (phase as { quality?: CaptureQuality }).quality ?? { faceWidthRatio: 0.65, brightness: 0.55, yawDeg: 0, shortSidePx: 1080 },
-          scores,
-        });
+        saved = addUserCapture(id, { id: `u-${Date.now()}`, productId: id, takenOn: day, quality, scores });
+        if (saved) toast({ title: "Added to your timeline", detail: `${target.name}, ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`, tone: "ok" });
       }
       setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved });
     } catch (e) {
@@ -195,216 +199,317 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
   if (!target) {
     return (
       <>
-        <PageHeader back={{ href: "/", label: "Today" }} />
-        <Card>
-          <p className="font-semibold">Pick the product you&apos;re tracking</p>
-          <ul className="mt-3 flex flex-col gap-2">
-            {choices.map((c) => (
-              <li key={c.id}>
-                <Link href={`/capture?id=${c.id}`} className="block rounded-2xl border border-line px-4 py-3 text-sm font-medium hover:border-foreground/25">
-                  {c.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        <NavBar title="Today's photo" back={{ href: "/", label: "Today" }} />
+        <main className="vd-page vd-page--narrow">
+          <LargeTitle title="Today's photo">
+            <span>Which product are you tracking?</span>
+          </LargeTitle>
+          <section className="ui-list-section">
+            <ul className="ui-list">
+              {choices.map((c) => (
+                <li key={c.id}>
+                  <Row href={`/capture?id=${c.id}`} title={c.name} />
+                </li>
+              ))}
+            </ul>
+            <p className="ui-list__footer">The product you opened is not stored in this browser. Pick one from the demo shelf.</p>
+          </section>
+        </main>
       </>
     );
   }
 
   const units = skinAnalysisCost(target.concerns);
+  const concerns = target.concerns.map((c) => concernDef(c).label).join(", ");
+  const backHref = demo || userProduct ? `/product?id=${encodeURIComponent(id)}` : "/";
+
+  if (phase.kind === "camera") {
+    const lightOkNow = lightOk(live.brightness);
+    const hint = !lightOkNow ? (live.brightness < QUALITY_RULES.minBrightness ? ISSUE_HINTS.too_dark : ISSUE_HINTS.overexposed) : "Hold still, then tap the shutter.";
+    const pos = Math.max(0, Math.min(1, live.brightness));
+    return (
+      <main className="vd-page vd-page--narrow" style={{ paddingTop: "calc(12px + env(safe-area-inset-top, 0px))" }}>
+        <div className="vd-camera">
+          <video ref={videoRef} playsInline muted />
+          <div className="vd-camera__mask" aria-hidden>
+            <div className={`vd-camera__oval${lightOkNow ? "" : " is-bad"}`} />
+          </div>
+          <div className="vd-camera__top" aria-live="polite">
+            <span className="vd-chip ui-glass-clear is-dimmed" data-ok={lightOkNow}>
+              <span className="vd-chip__dot" aria-hidden />
+              Light {Math.round(live.brightness * 100)}%
+            </span>
+            <span className="vd-chip ui-glass-clear is-dimmed" data-ok={live.face == null ? undefined : live.face > QUALITY_RULES.minFaceWidthRatio}>
+              <span className="vd-chip__dot" aria-hidden />
+              {live.detector ? (live.face ? `Face ${Math.round(live.face * 100)}% wide` : "No face yet") : "Fill the oval"}
+            </span>
+            {baseline && (
+              <span className="vd-chip ui-glass-clear is-dimmed" data-ok={Math.abs(live.brightness - baseline.brightness) <= QUALITY_RULES.maxBrightnessDrift}>
+                <span className="vd-chip__dot" aria-hidden />
+                Like day 0
+              </span>
+            )}
+          </div>
+          <div className="vd-lightbar ui-glass-clear is-dimmed" aria-hidden>
+            <div className="vd-lightbar__track">
+              <span className="vd-lightbar__ok" style={{ left: `${QUALITY_RULES.minBrightness * 100}%`, right: `${(1 - QUALITY_RULES.maxBrightness) * 100}%` }} />
+              <span className="vd-lightbar__knob" style={{ left: `${pos * 100}%` }} />
+            </div>
+            <div className="vd-lightbar__label">
+              <span>Dark</span>
+              <span>Bright</span>
+            </div>
+          </div>
+          <div className="vd-camera__bottom">
+            <button
+              type="button"
+              className="ui-icon-button ui-glass-clear is-dimmed"
+              onClick={() => {
+                stopCamera();
+                setPhase({ kind: "consent" });
+              }}
+              aria-label="Close the camera"
+            >
+              <Icon name="close" />
+            </button>
+            <button type="button" className="vd-shutter ui-glass-clear" onClick={shoot} aria-label="Take the photo">
+              <span />
+            </button>
+            <span style={{ width: 48 }} aria-hidden />
+          </div>
+        </div>
+        <p className="vd-footnote mt-3 text-center" aria-live="polite">
+          {hint}
+        </p>
+      </main>
+    );
+  }
+
   return (
     <>
-      <PageHeader back={{ href: demo ? `/product?id=${id}` : "/", label: demo ? target.name : "Today" }} />
-      <section className="rise">
-        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.03em]">Today&apos;s photo</h1>
-        <p className="mt-2 flex items-center gap-2 text-[14px] text-muted">
-          <Swatch hue={target.hue} size={20} />
-          {target.name} · {target.concerns.map((c) => concernDef(c).label).join(", ")} · {units} units
-        </p>
-      </section>
+      <NavBar title="Today's photo" back={{ href: backHref, label: demo || userProduct ? target.name : "Today" }} />
+      <main className="vd-page vd-page--narrow">
+        <LargeTitle title="Today's photo">
+          <span>
+            {target.name} · {concerns}
+          </span>
+          {demo && <DemoNote />}
+        </LargeTitle>
 
-      {phase.kind === "consent" && (
-        <>
-          <Card>
-            <SectionTitle>Same conditions as day 0</SectionTitle>
-            <ul className="mt-3 space-y-2.5 text-[14px] leading-6">
-              {["Same spot and time of day, facing the same light.", "Glasses off, hair off the forehead, no makeup.", "Look straight at the camera and fill the oval."].map((t, i) => (
-                <li key={t} className="flex gap-3">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[12px] font-semibold ring-1 ring-line">{i + 1}</span>
-                  {t}
+        {phase.kind === "consent" && (
+          <div className="vd-stack">
+            <section className="ui-list-section" aria-labelledby="c-h">
+              <div className="ui-list__header">
+                <strong id="c-h">Same conditions as day 0</strong>
+              </div>
+              <ul className="ui-list">
+                <li>
+                  <Row icon="sun" title="Same spot and time of day" subtitle="Face the same window or lamp" />
                 </li>
-              ))}
-            </ul>
-          </Card>
-          <label className="card flex cursor-pointer items-start gap-3 p-4 text-[13.5px] leading-5">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--foreground)]" />
-            <span>
-              I agree to take a face photo for cosmetic tracking.{" "}
-              <span className="text-muted">
-                {mode === "live" && liveUploads
-                  ? "It is sent to YouCam for analysis and can be deleted anytime."
-                  : "Demo mode: the photo never leaves this device; only its size is used to simulate the API call."}
-              </span>
-            </span>
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={!consent}
-              onClick={openCamera}
-              className="h-12 rounded-full bg-foreground text-[15px] font-semibold text-background transition active:scale-[.98] disabled:opacity-40"
-            >
-              Open camera
-            </button>
-            <button
-              type="button"
-              disabled={!consent}
-              onClick={useSample}
-              className="h-12 rounded-full border border-line bg-surface text-[15px] font-semibold transition hover:border-foreground/25 disabled:opacity-40"
-            >
-              Use a sample
-            </button>
-          </div>
-          {cameraError && (
-            <p role="alert" className="rounded-2xl bg-mixed/10 px-4 py-3 text-[13.5px] text-mixed">
-              {cameraError} Use the sample image to see the full flow.
-            </p>
-          )}
-        </>
-      )}
-
-      {phase.kind === "camera" && (
-        <>
-          <div className="relative overflow-hidden rounded-[28px] bg-black shadow-[0_24px_48px_-24px_rgba(0,0,0,.6)]" style={{ aspectRatio: "3 / 4" }}>
-            <video ref={videoRef} playsInline muted className="h-full w-full -scale-x-100 object-cover" />
-            <div aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
-              <div
-                className="h-[70%] w-[62%] rounded-[50%] border-2 transition-colors"
-                style={{ borderColor: lightOk(live.brightness) ? "rgba(255,255,255,.95)" : "rgba(255,180,160,.9)", boxShadow: "0 0 0 9999px rgba(0,0,0,.38)" }}
-              />
-            </div>
-            <div className="absolute inset-x-3 top-3 flex flex-wrap gap-1.5">
-              <Meter ok={lightOk(live.brightness)} label={`Light ${Math.round(live.brightness * 100)}%`} />
-              <Meter ok={live.face == null ? null : live.face > QUALITY_RULES.minFaceWidthRatio} label={live.detector ? (live.face ? `Face ${Math.round(live.face * 100)}% wide` : "No face yet") : "Fill the oval"} />
-              {baseline && <Meter ok={Math.abs(live.brightness - baseline.brightness) <= QUALITY_RULES.maxBrightnessDrift} label="Like day 0" />}
-            </div>
-          </div>
-          <div className="grid grid-cols-[1fr_auto] gap-3">
-            <button type="button" onClick={shoot} className="h-14 rounded-full bg-foreground text-[16px] font-semibold text-background transition active:scale-[.98]">
-              Take photo
-            </button>
-            <button type="button" onClick={() => { stopCamera(); setPhase({ kind: "consent" }); }} className="h-14 rounded-full border border-line bg-surface px-5 text-[14px] font-semibold">
-              Cancel
-            </button>
-          </div>
-        </>
-      )}
-
-      {phase.kind === "review" && (
-        <>
-          <Photo url={phase.url} label={phase.source === "sample" ? "Sample image" : "Your photo"} />
-          <Card>
-            <SectionTitle aside={<span className="text-[12px] text-muted">checked on this device · 0 units</span>}>Quality gate</SectionTitle>
-            <ul className="mt-3 space-y-2 text-[14px]">
-              <Check ok={phase.quality.brightness >= QUALITY_RULES.minBrightness && phase.quality.brightness <= QUALITY_RULES.maxBrightness} label={`Light ${Math.round(phase.quality.brightness * 100)}%`} />
-              <Check ok={phase.quality.faceWidthRatio > QUALITY_RULES.minFaceWidthRatio} label="Face fills more than 60% of the width" />
-              <Check ok={phase.quality.shortSidePx >= QUALITY_RULES.minShortSidePx} label={`Resolution ${phase.quality.shortSidePx}px (SD needs 480)`} />
-              {baseline && <Check ok={!phase.report.issues.includes("lighting_changed")} label="Lighting matches day 0" />}
-            </ul>
-            {phase.report.issues.length > 0 && (
-              <p className="mt-3 rounded-2xl bg-mixed/10 px-3.5 py-3 text-[13px] leading-5 text-mixed">
-                {phase.report.issues.map((i) => ISSUE_HINTS[i]).join(" ")}
-                {phase.report.ok && !phase.report.comparable ? " This photo would be set aside from the trend." : ""}
-              </p>
-            )}
-          </Card>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              disabled={!phase.report.ok}
-              onClick={() => analyze(phase.url, phase.size)}
-              className="h-12 rounded-full bg-foreground text-[15px] font-semibold text-background transition active:scale-[.98] disabled:opacity-40"
-            >
-              Analyze · {units} units
-            </button>
-            <button type="button" onClick={reset} className="h-12 rounded-full border border-line bg-surface text-[15px] font-semibold">
-              Retake
-            </button>
-          </div>
-          {!phase.report.ok && <p className="text-center text-[12.5px] text-muted">Blocked before upload, so no units are spent.</p>}
-        </>
-      )}
-
-      {phase.kind === "analyzing" && (
-        <>
-          <Photo url={phase.url} label="Analyzing" dim />
-          <Card>
-            <SectionTitle>YouCam AI Skin Analysis</SectionTitle>
-            <ol className="mt-3 space-y-2.5 text-[14px]">
-              {STAGES.map((s, i) => (
-                <li key={s} className={`flex items-center gap-3 ${i > phase.stage ? "text-muted" : ""}`}>
-                  <span className={`grid h-5 w-5 place-items-center rounded-full text-[10px] ${i < phase.stage ? "bg-keep text-white" : i === phase.stage ? "border-2 border-foreground border-t-transparent animate-spin" : "ring-1 ring-line"}`}>
-                    {i < phase.stage ? "✓" : ""}
-                  </span>
-                  {s}
+                <li>
+                  <Row icon="glasses" title="Glasses off, no makeup" subtitle="Hair off the forehead" />
                 </li>
-              ))}
-            </ol>
-          </Card>
-        </>
-      )}
+                <li>
+                  <Row icon="face" title="Look straight ahead" subtitle="Fill the oval: your face should cover most of the frame" />
+                </li>
+              </ul>
+              <p className="ui-list__footer">Comparable photos are what make a trend trustworthy. Photos that differ are set aside, not averaged in.</p>
+            </section>
 
-      {phase.kind === "done" && (
-        <>
-          <Photo url={phase.url} label={phase.mode === "mock" ? "Stayed on this device" : "Analyzed"} />
-          <Card className="rise">
-            <SectionTitle aside={<span className="text-[12px] font-semibold text-accent-ink">{phase.mode === "mock" ? "Synthetic scores" : "Live"}</span>}>Result</SectionTitle>
-            <ul className="mt-3 divide-y divide-line">
-              {phase.output
-                .filter((o) => o.type !== "all")
-                .map((o) => (
-                  <li key={o.type} className="flex items-center justify-between py-3">
-                    <span className="text-[15px] font-semibold">{concernDef(o.type as SdAction).label}</span>
-                    <span className="text-right tabular-nums">
-                      <span className="text-[20px] font-semibold tracking-tight">{o.ui_score}</span>
-                      <span className="text-[13px] text-muted">/100</span>
-                      <span className="ml-2 text-[12px] text-muted">raw {o.raw_score}</span>
+            <section className="ui-list-section" aria-labelledby="p-h">
+              <div className="ui-list__header">
+                <strong id="p-h">Privacy</strong>
+              </div>
+              <ul className="ui-list">
+                <li>
+                  <label className="ui-row" style={{ cursor: "pointer", minHeight: 56 }}>
+                    <span className="ui-row__icon">
+                      <Icon name="lock" />
                     </span>
+                    <span className="ui-row__body">
+                      <span className="ui-row__title">Use my face photo for cosmetic tracking</span>
+                    </span>
+                    <input type="checkbox" role="switch" className="ui-switch" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                  </label>
+                </li>
+              </ul>
+              <p className="ui-list__footer">
+                {mode === "live" && liveUploads
+                  ? "The photo is sent to YouCam AI Skin Analysis for the concerns above, and can be deleted at any time."
+                  : "Demo mode: the photo never leaves this device. Only its size is sent, to simulate the upload."}{" "}
+                Each analysis costs {units} units and runs only after the photo passes the quality check on this phone.
+              </p>
+            </section>
+
+            {cameraError && (
+              <div className="ui-banner ui-banner--warn" role="alert">
+                <Icon name="alert" />
+                <div>
+                  <strong>Camera unavailable</strong>
+                  <p>{cameraError}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="vd-actions">
+              <button type="button" disabled={!consent} onClick={openCamera} className="ui-button ui-button--prominent ui-button--xl">
+                <Icon name="camera" />
+                Open camera
+              </button>
+              <button type="button" disabled={!consent} onClick={useSample} className="ui-button ui-button--lg">
+                Use a sample photo
+              </button>
+              {!consent && <p className="vd-footnote text-center">Turn on the consent switch to continue.</p>}
+            </div>
+          </div>
+        )}
+
+        {phase.kind === "review" && (
+          <div className="vd-photo-row">
+            <Photo url={phase.url} label={phase.source === "sample" ? "Sample photo" : "Your photo"} />
+            <div className="vd-stack">
+              <section className="ui-list-section" aria-labelledby="q-h">
+                <div className="ui-list__header">
+                  <strong id="q-h">Quality check</strong>
+                  <span>on this phone · 0 units</span>
+                </div>
+                <ul className="ui-list">
+                  <Check
+                    ok={phase.quality.brightness >= QUALITY_RULES.minBrightness && phase.quality.brightness <= QUALITY_RULES.maxBrightness}
+                    title="Light"
+                    detail={`${Math.round(phase.quality.brightness * 100)}%`}
+                  />
+                  <Check ok={phase.quality.faceWidthRatio > QUALITY_RULES.minFaceWidthRatio} title="Face fills the frame" detail="> 60% wide" />
+                  <Check ok={phase.quality.shortSidePx >= QUALITY_RULES.minShortSidePx} title="Resolution" detail={`${phase.quality.shortSidePx} px`} />
+                  {baseline && <Check ok={!phase.report.issues.includes("lighting_changed")} title="Lighting matches day 0" />}
+                </ul>
+                {phase.report.issues.length > 0 && (
+                  <p className="ui-list__footer">
+                    {phase.report.issues.map((i) => ISSUE_HINTS[i]).join(" ")}
+                    {phase.report.ok && !phase.report.comparable ? " This photo would be set aside from the trend." : ""}
+                  </p>
+                )}
+              </section>
+              <div className="vd-actions">
+                <button
+                  type="button"
+                  disabled={!phase.report.ok}
+                  onClick={() => analyze(phase.url, phase.size, phase.quality)}
+                  className="ui-button ui-button--prominent ui-button--xl"
+                >
+                  Analyze · {units} units
+                </button>
+                <button type="button" onClick={reset} className="ui-button ui-button--lg">
+                  <Icon name="retake" />
+                  Retake
+                </button>
+                {!phase.report.ok && <p className="vd-footnote text-center">Blocked before upload, so no units are spent.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {phase.kind === "analyzing" && (
+          <div className="vd-photo-row">
+            <Photo url={phase.url} label="Analyzing" dim />
+            <section className="ui-list-section" aria-labelledby="a-h" aria-busy="true">
+              <div className="ui-list__header">
+                <strong id="a-h">YouCam AI Skin Analysis</strong>
+                <span>{concerns}</span>
+              </div>
+              <ol className="vd-steps ui-list" aria-live="polite">
+                {STAGES.map((s, i) => (
+                  <li key={s} className={i > phase.stage ? "is-todo" : ""}>
+                    <span className="vd-step-icon" aria-hidden>
+                      {i < phase.stage ? (
+                        <Icon name="checkCircle" />
+                      ) : i === phase.stage ? (
+                        <span className="ui-spinner">
+                          {Array.from({ length: 8 }, (_, k) => (
+                            <i key={k} />
+                          ))}
+                        </span>
+                      ) : null}
+                    </span>
+                    {s}
                   </li>
                 ))}
-            </ul>
-            <p className="mt-2 text-[12.5px] leading-5 text-muted">
-              {phase.saved
-                ? "Added to this product's timeline on this device."
-                : "Demo product: this photo is not added to its synthetic series. Add your own product to build a real timeline."}
-            </p>
-          </Card>
-          <TraceCard trace={phase.trace} units={phase.units} />
-          <div className="grid grid-cols-2 gap-3">
-            <Link href={`/product?id=${encodeURIComponent(id)}`} className="inline-flex h-12 items-center justify-center rounded-full bg-foreground text-[15px] font-semibold text-background">
-              See the timeline
-            </Link>
-            <button type="button" onClick={reset} className="h-12 rounded-full border border-line bg-surface text-[15px] font-semibold">
-              Delete photo
-            </button>
+              </ol>
+              <p className="ui-list__footer">A failed task costs nothing. Units are confirmed only when the task succeeds.</p>
+            </section>
           </div>
-        </>
-      )}
+        )}
 
-      {phase.kind === "error" && (
-        <>
-          {phase.url && <Photo url={phase.url} label="Not analyzed" dim />}
-          <Card>
-            <p role="alert" className="text-[16px] font-semibold text-return">The analysis did not complete.</p>
-            <p className="mt-2 text-[14px] leading-6 text-muted">{phase.message}</p>
-          </Card>
-          {phase.trace && phase.trace.length > 0 && <TraceCard trace={phase.trace} units={0} />}
-          <button type="button" onClick={reset} className="h-12 rounded-full bg-foreground text-[15px] font-semibold text-background">
-            Try again
-          </button>
-        </>
-      )}
+        {phase.kind === "done" && (
+          <div className="vd-photo-row">
+            <Photo url={phase.url} label={phase.mode === "mock" ? "Stayed on this device" : "Analyzed"} />
+            <div className="vd-stack">
+              <section className="ui-list-section" aria-labelledby="r-h">
+                <div className="ui-list__header">
+                  <strong id="r-h">Result</strong>
+                  <span>{phase.mode === "mock" ? "Synthetic scores" : "Live"}</span>
+                </div>
+                <ul className="ui-list">
+                  {phase.output
+                    .filter((o) => o.type !== "all")
+                    .map((o) => (
+                      <li key={o.type}>
+                        <div className="ui-row">
+                          <span className="ui-row__body">
+                            <span className="ui-row__title">{concernDef(o.type as SdAction).label}</span>
+                            <span className="ui-row__subtitle">raw {o.raw_score}</span>
+                          </span>
+                          <span className="vd-row-trailing">
+                            <b className="text-label" style={{ fontSize: "var(--text-title3)", fontWeight: 600 }}>
+                              {o.ui_score}
+                            </b>
+                            /100
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                </ul>
+                <p className="ui-list__footer">
+                  {phase.saved
+                    ? "Added to this product's timeline on this device."
+                    : "Demo product: this photo is not added to its synthetic series. Add your own product to build a real timeline."}
+                </p>
+              </section>
+              <TraceList trace={phase.trace} units={phase.units} />
+              <div className="vd-actions">
+                <Link href={`/product?id=${encodeURIComponent(id)}`} className="ui-button ui-button--prominent ui-button--xl">
+                  See the timeline
+                </Link>
+                <button type="button" onClick={reset} className="ui-button ui-button--lg ui-button--destructive">
+                  <Icon name="trash" />
+                  Delete photo
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {phase.kind === "error" && (
+          <div className="vd-photo-row">
+            {phase.url ? <Photo url={phase.url} label="Not analyzed" dim /> : <span />}
+            <div className="vd-stack">
+              <div className="ui-banner ui-banner--critical" role="alert">
+                <Icon name="alert" />
+                <div>
+                  <strong>The analysis did not complete</strong>
+                  <p>{phase.message} No units were charged.</p>
+                </div>
+              </div>
+              {phase.trace && phase.trace.length > 0 && <TraceList trace={phase.trace} units={0} />}
+              <div className="vd-actions">
+                <button type="button" onClick={reset} className="ui-button ui-button--prominent ui-button--xl">
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </>
   );
 }
@@ -437,48 +542,53 @@ function sampleImage(): HTMLCanvasElement {
   return c;
 }
 
-function Meter({ ok, label }: { ok: boolean | null; label: string }) {
+function Check({ ok, title, detail }: { ok: boolean; title: string; detail?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold backdrop-blur ${ok == null ? "bg-black/45 text-white" : ok ? "bg-white/90 text-keep" : "bg-white/90 text-return"}`}>
-      <span aria-hidden className="h-1.5 w-1.5 rounded-full" style={{ background: ok == null ? "#fff" : ok ? "var(--keep)" : "var(--return)" }} />
-      {label}
-    </span>
-  );
-}
-
-function Check({ ok, label }: { ok: boolean; label: string }) {
-  return (
-    <li className="flex items-center gap-3">
-      <span aria-hidden className={`grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white ${ok ? "bg-keep" : "bg-return"}`}>{ok ? "✓" : "!"}</span>
-      <span>{label}</span>
-      <span className="sr-only">{ok ? "passed" : "failed"}</span>
+    <li>
+      <div className="ui-row">
+        <span className="ui-row__icon" style={{ background: "transparent", color: ok ? "var(--status-ok)" : "var(--status-critical)" }} aria-hidden>
+          <Icon name={ok ? "checkCircle" : "stop"} />
+        </span>
+        <span className="ui-row__body">
+          <span className="ui-row__title">{title}</span>
+        </span>
+        {detail && <span className="vd-row-trailing">{detail}</span>}
+        <span className="ui-visually-hidden">{ok ? "passed" : "failed"}</span>
+      </div>
     </li>
   );
 }
 
 function Photo({ url, label, dim }: { url: string; label: string; dim?: boolean }) {
   return (
-    <div className="relative overflow-hidden rounded-[28px] bg-black/5" style={{ aspectRatio: "3 / 4", maxHeight: 360 }}>
+    <div className={`vd-photo${dim ? " is-dim" : ""}`}>
       {/* eslint-disable-next-line @next/next/no-img-element -- local object URL, never uploaded in demo mode */}
-      <img src={url} alt="" className={`h-full w-full object-cover ${dim ? "opacity-60" : ""}`} />
-      <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-[12px] font-semibold text-black backdrop-blur">{label}</span>
+      <img src={url} alt={label} />
+      <span className="vd-chip ui-glass-clear is-dimmed">
+        <span className="vd-chip__dot" aria-hidden />
+        {label}
+      </span>
     </div>
   );
 }
 
-function TraceCard({ trace, units }: { trace: TraceStep[]; units: number }) {
+function TraceList({ trace, units }: { trace: TraceStep[]; units: number }) {
   return (
-    <Card>
-      <SectionTitle aside={<span className="text-[12px] text-muted tabular-nums">{units ? `${units} units` : "0 units charged"}</span>}>API calls</SectionTitle>
-      <ol className="mt-3 space-y-1.5 font-mono text-[11.5px] leading-5">
+    <section className="ui-list-section" aria-labelledby="t-h">
+      <div className="ui-list__header">
+        <strong id="t-h">API calls</strong>
+        <span className="ui-num">{units ? `${units} units` : "0 units charged"}</span>
+      </div>
+      <ol className="vd-trace ui-list">
         {trace.map((t, i) => (
-          <li key={i} className="flex gap-2">
-            <span className={`w-10 shrink-0 font-semibold ${t.status < 300 ? "text-keep" : "text-return"}`}>{t.method}</span>
-            <span className="min-w-0 flex-1 truncate">{t.path}</span>
-            <span className="shrink-0 text-muted">{t.taskStatus ?? t.status}</span>
+          <li key={i}>
+            <span className="m">{t.method}</span>
+            <span className="p">{t.path}</span>
+            <span className={`s${t.status < 300 ? "" : " is-bad"}`}>{t.taskStatus ?? t.status}</span>
           </li>
         ))}
       </ol>
-    </Card>
+      <p className="ui-list__footer">The pre-signed upload URL is never shown or logged. The API key stays on the server.</p>
+    </section>
   );
 }
