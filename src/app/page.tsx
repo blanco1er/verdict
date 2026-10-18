@@ -1,66 +1,86 @@
 import Link from "next/link";
-import { Card, SampleBadge, StatusPill } from "@/components/ui";
-import { DEMO_AS_OF, DEMO_CAPTURES, DEMO_PRODUCT } from "@/lib/demo/fixture";
+import { PageHeader, PrimaryLink, SecondaryLink, SectionTitle, StatusPill, Swatch, VerdictRing, fmtDay } from "@/components/ui";
+import { ShelfRow } from "@/components/shelf-row";
+import { UserShelf } from "@/components/user-shelf";
+import { DEMO_SHELF, DEMO_TODAY, decidedOn } from "@/lib/demo/shelf";
 import { concernDef } from "@/lib/tracking/concerns";
+import { daysBetween } from "@/lib/tracking/model";
 import { computeVerdict } from "@/lib/tracking/verdict";
 
-export default function Home() {
-  const verdict = computeVerdict(DEMO_PRODUCT, DEMO_CAPTURES, DEMO_AS_OF);
+export default function Today() {
+  const [featured, ...rest] = DEMO_SHELF;
+  const v = computeVerdict(featured.product, featured.captures, DEMO_TODAY);
+  const decided = decidedOn(featured, DEMO_TODAY);
+  const early = decided ? featured.product.returnWindowDays - decided.day : 0;
   return (
     <>
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Verdict</h1>
-        <SampleBadge />
-      </header>
-      <p className="text-[15px] leading-6 text-muted">
-        Your skin tells you if a product works, before the return window closes.
-      </p>
+      <PageHeader />
 
-      <Link href="/product" className="block">
-        <Card className="transition-colors hover:border-foreground/20">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-muted">{DEMO_PRODUCT.brand}</p>
-              <h2 className="mt-1 text-lg font-semibold">{DEMO_PRODUCT.name}</h2>
+      <section className="rise pt-2 lg:hidden">
+        <h1 className="text-[30px] font-semibold leading-[1.05] tracking-[-0.035em]">
+          Does it work? <span className="text-accent-ink">Know before the return window closes.</span>
+        </h1>
+        <p className="mt-3 text-[15px] leading-6 text-muted">
+          Verdict measures only what the product promises, with YouCam AI Skin Analysis, and tells you keep or return before the deadline.
+        </p>
+      </section>
+
+      <article className="card rise overflow-hidden" aria-labelledby="featured-name">
+        <div className="flex items-start gap-3 p-5 pb-0">
+          <Swatch hue={featured.hue} />
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] font-medium text-muted">{featured.product.brand} · {featured.retailer}</p>
+            <h2 id="featured-name" className="truncate text-[18px] font-semibold tracking-tight">{featured.product.name}</h2>
+          </div>
+          <StatusPill status={v.status} />
+        </div>
+        <div className="flex items-center gap-5 p-5">
+          <VerdictRing status={v.status} elapsedDays={daysBetween(featured.product.purchasedOn, DEMO_TODAY)} windowDays={featured.product.returnWindowDays} daysLeft={v.daysToDeadline} size={124} />
+          <div className="min-w-0">
+            <p className="text-[17px] font-semibold leading-snug tracking-tight">{v.headline}</p>
+            {decided && (
+              <p className="mt-2 text-[13px] leading-5 text-muted">
+                Decided on day {decided.day}, <b className="font-semibold text-foreground">{early} days before the deadline</b>, from {v.usableCaptures} comparable photos.
+              </p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {featured.product.concerns.map((c) => (
+                <span key={c} className="rounded-full bg-surface-2 px-2.5 py-1 text-[12px] font-medium text-muted ring-1 ring-line">
+                  {concernDef(c).label}
+                </span>
+              ))}
             </div>
-            <StatusPill status={verdict.status} />
           </div>
-          <p className="mt-3 text-sm leading-6">{verdict.headline}</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {DEMO_PRODUCT.concerns.map((c) => (
-              <span key={c} className="rounded-full bg-background px-3 py-1 text-xs text-muted">
-                {concernDef(c).label}
-              </span>
-            ))}
-          </div>
-          <div className="mt-5 grid grid-cols-3 gap-2 text-center">
-            <Stat value={String(verdict.daysToDeadline)} label="days to return" />
-            <Stat value={String(verdict.usableCaptures)} label="good photos" />
-            <Stat value={verdict.nextCaptureOn?.slice(5) ?? "-"} label="next photo" />
-          </div>
-        </Card>
-      </Link>
+        </div>
+        <Link
+          href={`/product?id=${featured.product.id}&replay=1`}
+          className="flex items-center justify-between border-t border-line bg-surface-2 px-5 py-3.5 text-[14px] font-semibold transition hover:bg-background"
+        >
+          <span className="flex items-center gap-2.5">
+            <span aria-hidden className="grid h-7 w-7 place-items-center rounded-full bg-foreground text-[10px] text-background">▶</span>
+            Replay the 30-day return window
+          </span>
+          <span aria-hidden className="text-muted">→</span>
+        </Link>
+      </article>
 
       <div className="grid grid-cols-2 gap-3">
-        <Link href="/capture" className="rounded-full bg-foreground px-4 py-3 text-center text-sm font-medium text-background">
-          Take today&apos;s photo
-        </Link>
-        <button disabled className="rounded-full border border-line px-4 py-3 text-sm text-muted" title="Coming: scan or paste a product link">
-          Add a product
-        </button>
+        <PrimaryLink href="/capture?id=calming-serum">Take a photo</PrimaryLink>
+        <SecondaryLink href="/add">Add a product</SecondaryLink>
       </div>
-      <p className="text-xs leading-5 text-muted">
-        Cosmetic guidance, not medical advice. Photos stay private and can be deleted anytime.
+
+      <SectionTitle aside={<span className="text-[12px] text-muted tabular-nums">Demo date · {fmtDay(DEMO_TODAY)}</span>}>Your shelf</SectionTitle>
+      <ul className="flex flex-col gap-3">
+        {rest.map((item) => (
+          <ShelfRow key={item.product.id} item={item} today={DEMO_TODAY} />
+        ))}
+        <UserShelf />
+      </ul>
+
+      <p className="px-1 text-[12px] leading-5 text-muted">
+        Cosmetic guidance, not medical advice. Photos need your consent, stay private and can be deleted anytime. Products and scores on this
+        screen are synthetic demo data.
       </p>
     </>
-  );
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="rounded-2xl bg-background px-2 py-3">
-      <div className="text-lg font-semibold tabular-nums">{value}</div>
-      <div className="text-[11px] text-muted">{label}</div>
-    </div>
   );
 }

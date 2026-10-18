@@ -54,7 +54,7 @@ export function computeVerdict(
   const baseline = ok[0];
   const usable = ok.filter((c) => checkCapture(c.quality, baseline?.quality).comparable);
   const skipped = mine.length - usable.length;
-  if (skipped > 0) reasons.push(`${skipped} photo(s) set aside (light, framing or angle differed).`);
+  if (skipped > 0) reasons.push(`${skipped} photo${skipped === 1 ? "" : "s"} set aside: light, framing or angle differed from day 0.`);
 
   // 2. One trend per tracked concern.
   const trends: Partial<Record<SdAction, Trend>> = {};

@@ -54,5 +54,5 @@ export const ISSUE_HINTS: Record<QualityIssue, string> = {
   too_dark: "Face a window or a lamp.",
   overexposed: "Too bright. Step away from direct light.",
   not_frontal: "Look straight at the camera.",
-  lighting_changed: "Lighting differs from day 1. Use the same spot and time.",
+  lighting_changed: "Lighting differs from day 0. Use the same spot and time.",
 };
