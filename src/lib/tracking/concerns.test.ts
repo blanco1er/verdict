@@ -25,4 +25,9 @@ describe("claim reading (no-AI fallback)", () => {
   it("builds a Skin Simulation body only for simulatable concerns", () => {
     expect(simulationFor(["redness", "pore", "moisture"], 0.6)).toEqual({ redness: 0.6, pores: 0.6 });
   });
+
+  it("reads verbs in the third person, as claims are written", () => {
+    expect(readClaim("Hydrates and visibly calms redness in 4 weeks.").concerns).toEqual(expect.arrayContaining(["moisture", "redness"]));
+    expect(readClaim("Brightens, firms and moisturizes.").concerns).toEqual(expect.arrayContaining(["radiance", "firmness", "moisture"]));
+  });
 });

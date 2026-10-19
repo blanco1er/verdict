@@ -19,9 +19,15 @@ function send(body: Record<string, unknown>) {
   }
 }
 
-/** A named action from the allow-list in src/lib/visits/core.ts (ACTIONS). */
+let lastAction = { key: "", at: 0 };
+
+/** A named action from the allow-list in src/lib/visits/core.ts (ACTIONS). A repeat within 1 s (double tap) counts once. */
 export function reportAction(name: string) {
   try {
+    const key = `${name}|${location.pathname}${location.search}`;
+    const now = Date.now();
+    if (key === lastAction.key && now - lastAction.at < 1000) return;
+    lastAction = { key, at: now };
     send({ t: "action", name, path: location.pathname + location.search });
   } catch {
     /* never in the way */

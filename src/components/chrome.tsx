@@ -112,7 +112,7 @@ export function Sidebar({ productId }: { productId?: string }) {
       </div>
       <div className="ui-sidebar__scroll">
         {TABS.map((t) => (
-          <Link key={t.href} href={t.href} className="ui-nav-item" aria-current={current === t.href && !path.startsWith("/product") ? "page" : undefined}>
+          <Link key={t.href} href={t.href} className="ui-nav-item" aria-current={current === t.href && !/^\/(product|measured|privacy)/.test(path) ? "page" : undefined}>
             <Icon name={t.icon} />
             {t.label}
           </Link>

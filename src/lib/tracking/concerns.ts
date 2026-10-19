@@ -16,18 +16,18 @@ export interface ConcernDef {
 }
 
 export const CONCERNS: ConcernDef[] = [
-  { action: "redness", label: "Redness", simulation: "redness", irritationSignal: true, keywords: /\b(red(ness)?|calm(ing)?|sooth(e|ing)|rosacea|sensitive)\b/u },
+  { action: "redness", label: "Redness", simulation: "redness", irritationSignal: true, keywords: /\b(red(ness)?|calm(s|ing)?|sooth(e|es|ing)|rosacea|sensitive)\b/u },
   { action: "acne", label: "Blemishes", simulation: "acne", irritationSignal: true, keywords: /\b(acne|blemish(es)?|breakouts?|pimples?|spots? clear(ing)?)\b/u },
   { action: "pore", label: "Pores", simulation: "pores", keywords: /\bpores?\b/u },
   { action: "wrinkle", label: "Fine lines", simulation: "wrinkle", keywords: /\b(wrinkles?|fine lines?|anti[- ]?ag(e|ing)|retinol|retinal)\b/u },
   { action: "age_spot", label: "Dark spots", simulation: "spots", keywords: /\b(dark spots?|hyper-?pigmentation|age spots?|even(s)? (skin )?tone|discoloration)\b/u },
-  { action: "radiance", label: "Radiance", simulation: "radiance", keywords: /\b(glow(ing)?|radian(ce|t)|dull(ness)?|bright(en(ing)?|er))\b/u },
-  { action: "moisture", label: "Hydration", keywords: /\b(hydrat(e|ing|ion)|moistur(e|izing|ising)|plump(ing)?|hyaluronic|dry(ness)?)\b/u },
-  { action: "oiliness", label: "Oiliness", simulation: "oiliness", keywords: /\b(oil(y|iness)?|sebum|shine|matt(e|ifying))\b/u },
-  { action: "texture", label: "Texture", simulation: "texture", keywords: /\b(texture|smooth(er|ing|s)?|exfoliat(e|ing|ion)|rough(ness)?)\b/u },
+  { action: "radiance", label: "Radiance", simulation: "radiance", keywords: /\b(glow(s|ing)?|radian(ce|t)|dull(ness)?|bright(en(s|ing)?|er))\b/u },
+  { action: "moisture", label: "Hydration", keywords: /\b(hydrat(e|es|ed|ing|ion)|moistur(e|izes|ises|izing|ising|izer|iser)|plump(s|ing)?|hyaluronic|dry(ness)?)\b/u },
+  { action: "oiliness", label: "Oiliness", simulation: "oiliness", keywords: /\b(oil(y|iness)?|sebum|shine|matt(e|ifies|ifying))\b/u },
+  { action: "texture", label: "Texture", simulation: "texture", keywords: /\b(texture|smooth(er|ing|s)?|exfoliat(e|es|ing|ion)|rough(ness)?)\b/u },
   { action: "dark_circle_v2", label: "Dark circles", simulation: "dark_circle", keywords: /\bdark circles?\b/u },
   { action: "eye_bag", label: "Puffiness", simulation: "eye_bags", keywords: /\b(puff(y|iness)|eye bags?|under-?eye bags?)\b/u },
-  { action: "firmness", label: "Firmness", keywords: /\b(firm(ness|ing)?|lift(ing)?|elasticity|sagging)\b/u },
+  { action: "firmness", label: "Firmness", keywords: /\b(firm(s|ness|ing)?|lift(s|ing)?|elasticity|sagging)\b/u },
 ];
 
 export const MAX_TRACKED = 4; // keeps every analysis in the 9-unit SD tier
