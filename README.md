@@ -24,10 +24,14 @@ Built for the *YouCam API Skin AI & eCommerce VTO Hackathon* (2026). Mobile-firs
    first photo.
 
 On a computer, open `/phone` to use the app inside an iPhone frame. Light and dark mode follow the system.
+6. Open **Measured**: real YouCam AI Skin Analysis results on the maker's own skin (repeatability, a real change, a real
+   product on day 2), labelled as real data.
 
-> **Synthetic data until the API key is wired.** By default the server runs in mock mode: products and scores are
-> generated, shaped exactly like the documented Skin Analysis responses, and labelled "Synthetic data" on every
-> screen. In mock mode your photo never leaves the device: only its size is sent to simulate the upload.
+> **Two kinds of data, always labelled.** The demo shelf (four products, 30-day story) is **synthetic**: scores are
+> generated in the exact shape of the documented Skin Analysis response, and every screen says "Synthetic data".
+> The **Measured** page shows **real** API results, labelled "Real data". A photo you take is analysed live only when
+> the deployment allows it and the unit guard agrees; otherwise it runs in demo mode, never leaves your device, and
+> the screen says why.
 
 ## What it does
 
@@ -45,15 +49,14 @@ On a computer, open `/phone` to use the app inside an iPhone frame. Light and da
 
 ## YouCam APIs
 
-| API | Use in Verdict | Cost |
-| --- | --- | --- |
-| **AI Skin Analysis** (`/s2s/v2.0/task/skin-analysis`, `format: json`) | Scores for the 1 to 4 promised concerns | 9 units (SD, 1–4 concerns) |
-| File API (`POST /s2s/v2.0/file` + PUT to the pre-signed URL) | Upload, then poll the task until `success` | free |
-| **Skin Simulation** (`/s2s/v2.0/task/skin-simulation`) | "The promised result" from the day-0 photo | 4 units |
-| **Look VTO** (`/s2s/v2.0/task/look-vto`) | An alternative to try when the verdict is return | 2 units |
-| Credit (`GET /s2s/v1.0/client/credit`) | Unit balance guard | free |
-
-Skin Simulation and Look VTO are wired in the client and shown as planned calls; they run only with the live key.
+| API | Use in Verdict | Cost | Status |
+| --- | --- | --- | --- |
+| **AI Skin Analysis** (`/s2s/v2.0/task/skin-analysis`, `format: json`) | Scores for the 1 to 4 promised concerns | 9 units (SD, 1–4 concerns) | live |
+| File API (`POST /s2s/v2.0/file` + PUT to the pre-signed URL) | Upload, then poll the task until `success` | free | live |
+| **Skin Simulation** (`/s2s/v2.0/task/skin-simulation`) | "The promised result" on the photo just analysed, reusing its `file_id` | 4 units (1–4 concerns) | live |
+| Credit (`GET /s2s/v1.0/client/credit`) | The real balance behind the unit guard | free | live |
+| Feature cost (`GET /s2s/v2.0/credit/feature-cost`) | Checked by `scripts/live.mjs check` | free | live |
+| **Look VTO** (`/s2s/v2.0/task/look-vto`) | An alternative to try when the verdict is return | 2 units | typed client only, not called by the app yet |
 
 ## Architecture
 
@@ -61,28 +64,60 @@ Skin Simulation and Look VTO are wired in the client and shown as planned calls;
   polling, 429 back-off, local unit ledger (reserve, confirm on `success`, refund on `error`), **tracing transport**
   that records every step for the UI without leaking the pre-signed URL, mock transport replaying the documented
   shapes and errors.
+- `src/lib/youcam/guard.ts`: the **live gate** that protects the 1,000 hackathon units. A live call needs
+  `YOUCAM_PUBLIC_LIVE=1`, a per-visitor and per-day quota (3 and 15), and the **real balance read from YouCam** (free
+  call, cached 20 s) staying above `YOUCAM_UNIT_FLOOR`. That last lock survives restarts and serverless instances.
+  When the gate says no, the same pipeline runs in demo mode and the answer says why.
 - `src/lib/tracking/`: claim reading, tracking plan and unit cost, capture quality gate, trend, verdict.
 - `src/lib/demo/`: the synthetic shelf (four outcomes) and the day-by-day replay; visitor products in localStorage.
-- `src/app/api/youcam/analyze`: the full pipeline for one photo. The API key never leaves the server; public live
-  analyses are off unless `YOUCAM_PUBLIC_LIVE=1`.
+- `src/lib/live/`: real measurements (`measured.json`, scores only, written by `scripts/live.mjs`) and their
+  statistics: test-retest noise per concern, a positive control, the real series fed to the verdict engine.
+- `src/lib/visits/` + `src/app/api/visit*`: anonymous usage log (see Privacy below).
+- API routes: `analyze` (one photo, full pipeline, traced), `simulate` (promised result), `status` (may this visitor
+  run live now? asked before any photo is sent), `skin-analysis` (URL or file id, same gate).
 
 ## Run
 
 ```sh
 npm install
-npm test          # vitest: 61 tests, incl. cross-screen consistency (client, tracing, costs, claims, plan, quality, trend, verdict, demo shelf, budget)
-npm run dev       # http://localhost:3000
+npm test          # vitest: 83 tests (client, tracing, costs, claims, plan, quality, trend, verdict, demo shelf,
+                  # cross-screen consistency, budget, live gate, visit log, real-measurement statistics)
+npm run dev       # http://localhost:3000, demo mode, no key needed
 npm run build
 ```
 
-Live mode (local only): copy `.env.example` to `.env.local`, set `YOUCAM_MODE=live` and `YOUCAM_API_KEY`.
-Never commit keys.
+Live mode, on macOS, with the key kept in the keychain (never in a file):
+
+```sh
+zsh scripts/set-youcam-key.sh        # hidden input, checked with a free balance call, stored in the keychain
+zsh scripts/youcam-live.sh check     # free: balance and the official cost grid
+zsh scripts/youcam-live.sh session --kind repeatability --concerns redness,pore,oiliness,moisture photos/*.jpg
+                                     # shows the cost; spends units only with --yes; stores scores, never photos
+zsh scripts/youcam-live.sh dev       # the app locally in live mode (quota and unit floor on)
+```
+
+Anywhere else: copy `.env.example` to `.env.local` and set `YOUCAM_MODE=live` and `YOUCAM_API_KEY`. Never commit keys.
+
+Deploy (Vercel Hobby): `zsh scripts/deploy-vercel.sh` sets every variable from the keychain through stdin, then
+deploys. Variables: `YOUCAM_MODE`, `YOUCAM_API_KEY`, `YOUCAM_PUBLIC_LIVE`, `YOUCAM_UNIT_FLOOR`, `YOUCAM_UNIT_CAP`,
+`VERDICT_VISITS_TOKEN`, `VERDICT_R2_ACCOUNT_ID`, `VERDICT_R2_ACCESS_KEY_ID`, `VERDICT_R2_SECRET_ACCESS_KEY`,
+`VERDICT_R2_BUCKET`, `VERDICT_R2_PREFIX`.
+
+## Privacy and the usage log
+
+- Demo mode: the photo never leaves the device. Live mode: a camera photo goes through the server to YouCam and is
+  not stored by Verdict. Products and scores you add stay in your browser.
+- **Anonymous usage log**: page opened, referring site name, time on page, named actions, demo or live analysis and
+  its unit cost, JavaScript errors. A visitor is a salted one-way code of address and browser; the address is never
+  written. Never: photos, scores, typed text. Stored as one small object per event in a private Cloudflare R2 bucket
+  (or a local file), read only by the developer with a token (`GET /api/visits/export`, 404 without it), reported by
+  `scripts/visits-report.mjs`. The developer's own devices are excluded through a secret link. Details: `/privacy`.
 
 ## Notes
 
 - Cosmetic guidance only, not medical advice. Photos need explicit consent and can be deleted.
-- Noise thresholds (`noiseSigma`, `minEffect` in `src/lib/tracking/trend.ts`) are provisional until the 5-photo
-  calibration with the live API.
+- Noise thresholds (`noiseSigma`, `minEffect` in `src/lib/tracking/trend.ts`, 3 raw points) are compared on
+  **Measured** with the test-retest noise actually measured on real photos.
 - `docs/screenshots/`: mock-mode screens (synthetic data), iPhone, iPad and desktop, light and dark. Older screens are in `docs/screenshots/archives/`.
 - `src/design-system/`: the shared design system (tokens, `ui-` components, spring motion), copied in so the repo is self-contained.
 
