@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local visit log and owner photos (never committed)
+/.data
+/live-photos

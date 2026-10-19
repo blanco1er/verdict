@@ -1,20 +1,20 @@
 import { YouCamApiError, YouCamTaskError } from "@/lib/youcam/client";
 import { UnitBudgetExceeded } from "@/lib/youcam/ledger";
-import { getYouCam } from "@/lib/youcam/server";
+import { getYouCam, liveGate } from "@/lib/youcam/server";
+import { skinAnalysisCost } from "@/lib/youcam/costs";
+import { visitContext } from "@/lib/visits/server";
 import { SD_ACTIONS, type SdAction } from "@/lib/youcam/types";
 
 const ALLOWED: ReadonlySet<string> = new Set(SD_ACTIONS);
 
 /**
  * POST { src_file_url | src_file_id, dst_actions } -> { mode, output }
- * The API key stays on the server. Live calls from the public site are
- * refused unless YOUCAM_PUBLIC_LIVE=1 (protects the 1,000 units).
+ * The API key stays on the server. In live mode the same gate as the app
+ * applies (YOUCAM_PUBLIC_LIVE=1, per-visitor and daily quota, real balance
+ * above the floor), so this route cannot be used to drain the units.
  */
 export async function POST(request: Request) {
   const { client, mode } = getYouCam();
-  if (mode === "live" && process.env.YOUCAM_PUBLIC_LIVE !== "1") {
-    return Response.json({ error: "Live analysis is disabled on this deployment" }, { status: 403 });
-  }
   let body: { src_file_url?: unknown; src_file_id?: unknown; dst_actions?: unknown };
   try {
     body = await request.json();
@@ -33,6 +33,10 @@ export async function POST(request: Request) {
         : null;
   if (source == null) {
     return Response.json({ error: "src_file_id or https src_file_url required" }, { status: 400 });
+  }
+  if (mode === "live") {
+    const ok = await liveGate().take(visitContext(request.headers).v, skinAnalysisCost(actions as SdAction[]));
+    if (!ok.ok) return Response.json({ error: `Live analysis refused: ${ok.reason}` }, { status: 403 });
   }
   try {
     const output = await client.analyzeSkin(source, actions as SdAction[]);

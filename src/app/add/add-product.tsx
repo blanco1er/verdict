@@ -1,5 +1,6 @@
 "use client";
 
+import { reportAction } from "@/components/visit-beacon";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { NavBar } from "@/components/chrome";
@@ -38,6 +39,7 @@ export function AddProduct() {
     setSaving(true);
     const product = newProduct({ name, claim, purchasedOn: bought, returnWindowDays: windowDays }, `u-${Date.now().toString(36)}`);
     saveUserProduct(product);
+    reportAction("add_product");
     toast({ title: "Tracking started", detail: `${product.name}: verdict due ${fmtDay(plan.decisionDate)}`, tone: "ok" });
     router.push(`/product?id=${product.id}`);
   }

@@ -11,7 +11,7 @@ describe("1,000-unit budget", () => {
   it("caps visitors per day and stops near the floor", () => {
     const q = new VisitorQuota();
     expect([1, 2, 3, 4].map(() => q.tryConsume("judge-a", "2026-11-05", 500))).toEqual([true, true, true, false]);
-    expect(q.tryConsume("judge-b", "2026-11-05", 65)).toBe(false); // would go under 60
+    expect(q.tryConsume("judge-b", "2026-11-05", 105)).toBe(false); // would go under the 100-unit floor
     expect(q.tryConsume("judge-a", "2026-11-06", 500)).toBe(true); // new day
   });
 });

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { Sidebar, SidebarWithParams, TabBar } from "@/components/chrome";
+import { VisitBeacon } from "@/components/visit-beacon";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -32,6 +33,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         </Suspense>
         <div className="vd-main">{children}</div>
         <TabBar />
+        <Suspense fallback={null}>
+          <VisitBeacon />
+        </Suspense>
       </body>
     </html>
   );

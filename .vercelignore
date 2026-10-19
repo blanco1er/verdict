@@ -1,0 +1,9 @@
+node_modules
+.next
+.data
+.env*
+!.env.example
+*.tsbuildinfo
+live-photos
+docs/screenshots/archives
+.DS_Store

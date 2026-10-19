@@ -1,5 +1,7 @@
 import "server-only";
 import { YouCamClient } from "./client";
+import { VISITOR_LIMITS } from "../budget/plan";
+import { LiveGate } from "./guard";
 import { UnitLedger } from "./ledger";
 import { MockTransport } from "./mock";
 import { TracingTransport } from "./tracing";
@@ -14,6 +16,10 @@ export type YouCamMode = "mock" | "live";
 
 let ledger: UnitLedger | undefined;
 let singleton: { client: YouCamClient; mode: YouCamMode } | undefined;
+let gate: LiveGate | undefined;
+
+/** Demo-mode calls spend nothing: they get their own, effectively unlimited, ledger. */
+const mockLedger = () => new UnitLedger(Number.MAX_SAFE_INTEGER);
 
 function sharedLedger(): UnitLedger {
   if (ledger) return ledger;
@@ -43,15 +49,34 @@ export function getYouCam(): { client: YouCamClient; mode: YouCamMode } {
   const mode = youCamMode();
   singleton = {
     mode,
-    client: new YouCamClient({ transport: baseTransport(mode), ledger: sharedLedger(), pollIntervalMs: mode === "mock" ? 300 : 3000 }),
+    client: new YouCamClient({ transport: baseTransport(mode), ledger: mode === "live" ? sharedLedger() : mockLedger(), pollIntervalMs: mode === "mock" ? 300 : 3000 }),
   };
   return singleton;
 }
 
-/** A client for one request whose every API step is recorded for the UI. */
-export function createTracedClient(): { client: YouCamClient; mode: YouCamMode; trace: TracingTransport } {
-  const mode = youCamMode();
+/**
+ * A client for one request whose every API step is recorded for the UI.
+ * `force: "mock"` runs the same pipeline in demo mode (used when a live call is refused).
+ */
+export function createTracedClient(force?: "mock"): { client: YouCamClient; mode: YouCamMode; trace: TracingTransport } {
+  const mode: YouCamMode = force ?? youCamMode();
   const trace = new TracingTransport(baseTransport(mode));
-  const client = new YouCamClient({ transport: trace, ledger: sharedLedger(), pollIntervalMs: mode === "mock" ? 250 : 3000 });
+  const client = new YouCamClient({ transport: trace, ledger: mode === "live" ? sharedLedger() : mockLedger(), pollIntervalMs: mode === "mock" ? 250 : 3000 });
   return { client, mode, trace };
+}
+
+/** Unit floor kept for the owner (YOUCAM_UNIT_FLOOR, default 100). */
+export function unitFloor(): number {
+  const n = Number(process.env.YOUCAM_UNIT_FLOOR ?? VISITOR_LIMITS.hardFloorUnits);
+  return Number.isFinite(n) && n >= 0 ? n : VISITOR_LIMITS.hardFloorUnits;
+}
+
+/** The public live gate: quota per visitor and per day, and the REAL balance above the floor. */
+export function liveGate(): LiveGate {
+  gate ??= new LiveGate({
+    publicLive: publicLiveEnabled(),
+    floor: unitFloor(),
+    getBalance: () => getYouCam().client.getRemainingUnits(),
+  });
+  return gate;
 }

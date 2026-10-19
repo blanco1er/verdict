@@ -1,5 +1,6 @@
 "use client";
 
+import { reportAction } from "@/components/visit-beacon";
 import Link from "next/link";
 import { useSyncExternalStore } from "react";
 import { NavBar } from "@/components/chrome";
@@ -159,7 +160,7 @@ export function ProofView({ demo, id, demoToday }: { demo: DemoItem | null; id: 
           </article>
 
           <div className="vd-actions vd-actions--row no-print">
-            <button type="button" onClick={() => window.print()} className="ui-button ui-button--prominent ui-button--xl">
+            <button type="button" onClick={() => (reportAction("proof_print"), window.print())} className="ui-button ui-button--prominent ui-button--xl">
               <Icon name="doc" />
               Save as PDF
             </button>

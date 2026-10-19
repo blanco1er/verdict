@@ -126,6 +126,15 @@
   }
   .vd-demo-note svg.ui-icon { width: 15px; height: 15px; }
   .vd-demo-note:hover { color: var(--label); }
+  /* Real data note: same quiet line, in the keep colour (never a pill) */
+  .vd-real-note { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -12px 0 -12px -2px; padding: 0 2px; color: var(--vd-keep-text); font-size: var(--text-subhead); font-weight: var(--weight-medium); }
+  .vd-real-note svg.ui-icon { width: 15px; height: 15px; }
+  .vd-empty { display: grid; justify-items: start; gap: 8px; }
+  .vd-empty > svg.ui-icon { width: 28px; height: 28px; color: var(--label-secondary); }
+  .vd-empty h2 { margin: 4px 0 0; font: var(--weight-semibold) var(--text-title3)/1.25 var(--font-display); letter-spacing: var(--tracking-title3); }
+  .vd-empty p { margin: 0; color: var(--label-secondary); max-width: 62ch; text-wrap: pretty; }
+  .vd-num { font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); color: var(--label); }
+  .vd-num small { font-weight: var(--weight-regular); color: var(--label-secondary); }
 
   /* ---------- Summary sentence (content first) ------------------------- */
   .vd-summary { margin: 0; font-size: var(--text-title3); line-height: 1.38; letter-spacing: var(--tracking-title3); text-wrap: pretty; }
@@ -380,6 +389,8 @@
   .vd-sheet-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; font-size: var(--text-subhead); color: var(--label-secondary); }
   .vd-sheet-list li { display: flex; gap: 10px; align-items: flex-start; }
   .vd-sheet-list svg.ui-icon { flex: none; margin-top: 1px; color: var(--label-secondary); }
+  .vd-sheet-list a, .vd-footnote a, .vd-prose a { color: var(--accent-text); text-decoration: none; }
+  .vd-sheet-list a:hover, .vd-footnote a:hover, .vd-prose a:hover { text-decoration: underline; }
   .ui-sheet__bar .ui-button { min-width: 64px; }
 
   /* Phone frame for desktop jurors */

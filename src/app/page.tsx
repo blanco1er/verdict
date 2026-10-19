@@ -119,6 +119,9 @@ export default function Today() {
                     <Row icon={a.icon} title={a.title} subtitle={a.detail} />
                   </li>
                 ))}
+                <li>
+                  <Row href="/measured" icon="checkCircle" title="Measured with YouCam" subtitle="Real results on the maker's own skin: noise between photos, a real change, a real product." tone="accent" />
+                </li>
               </ul>
               <p className="ui-list__footer">
                 The API key never leaves the server. Every call is listed after each photo, with its unit cost.
@@ -142,7 +145,8 @@ export default function Today() {
               <p className="ui-list__footer">Same spot, same light as day 0. The photo is checked on this phone before any unit is spent.</p>
             </section>
             <p className="vd-footnote">
-              Cosmetic guidance, not medical advice. Photos need your consent, stay private and can be deleted at any time.
+              Cosmetic guidance, not medical advice. Photos need your consent, stay private and can be deleted at any time. Anonymous usage is logged to
+              improve the demo · <Link href="/privacy">Privacy</Link>
             </p>
           </div>
         </div>

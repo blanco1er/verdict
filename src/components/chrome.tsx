@@ -138,6 +138,10 @@ export function Sidebar({ productId }: { productId?: string }) {
         <p className="vd-sidebar__note">
           Synthetic data: generated scores in the documented YouCam response shape. Demo date {"Nov 5, 2026"}.
         </p>
+        <Link href="/measured" className="ui-nav-item" aria-current={path.startsWith("/measured") ? "page" : undefined}>
+          <Icon name="checkCircle" />
+          Measured (real data)
+        </Link>
         <Link href="/phone" className="ui-nav-item" aria-current={current === "/phone" ? "page" : undefined}>
           <Icon name="phone" />
           Phone view

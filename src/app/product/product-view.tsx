@@ -1,5 +1,6 @@
 "use client";
 
+import { reportAction } from "@/components/visit-beacon";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -184,6 +185,7 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
                     className="ui-button ui-button--tinted ui-button--lg"
                     onClick={() => {
                       if (playing) return setPlaying(false);
+                      reportAction("replay");
                       if (day >= todayDay) setDay(0);
                       setPlaying(true);
                     }}
@@ -311,11 +313,11 @@ function NextSteps({ item, status, isDemo }: { item: DemoItem; status: VerdictSt
           <Row href={`/proof?id=${id}`} icon="doc" title="Proof for the store" subtitle="Every photo, its quality and its scores" />
         </li>
         <li>
-          <Row onClick={() => setSheet("sim")} icon="compare" title="See the promised result" subtitle={`YouCam Skin Simulation · ${simUnits} units`} />
+          <Row onClick={() => (reportAction("sheet_promised"), setSheet("sim"))} icon="compare" title="See the promised result" subtitle={`YouCam Skin Simulation · ${simUnits} units`} />
         </li>
         {offerLook && (
           <li>
-            <Row onClick={() => setSheet("look")} icon="brush" title="Try an alternative on your face" subtitle={`YouCam Look VTO · ${LOOK_VTO_UNITS} units`} />
+            <Row onClick={() => (reportAction("sheet_look"), setSheet("look"))} icon="brush" title="Try an alternative on your face" subtitle={`YouCam Look VTO · ${LOOK_VTO_UNITS} units`} />
           </li>
         )}
         {!isDemo && (

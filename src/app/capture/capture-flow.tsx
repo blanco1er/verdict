@@ -6,6 +6,7 @@ import { NavBar, useImmersive } from "@/components/chrome";
 import { Icon } from "@/components/icons";
 import { DemoNote } from "@/components/sheet";
 import { LargeTitle, Row } from "@/components/ui";
+import { reportAction } from "@/components/visit-beacon";
 import { toast } from "@/design-system/motion.js";
 import { addUserCapture, loadUserItems } from "@/lib/demo/store";
 import { concernDef } from "@/lib/tracking/concerns";
@@ -26,7 +27,7 @@ type Phase =
   | { kind: "camera" }
   | { kind: "review"; url: string; size: number; quality: CaptureQuality; report: QualityReport; source: "camera" | "sample" }
   | { kind: "analyzing"; url: string; stage: number; quality: CaptureQuality }
-  | { kind: "done"; url: string; output: SkinAnalysisOutput[]; trace: TraceStep[]; units: number; mode: string; saved: boolean }
+  | { kind: "done"; url: string; output: SkinAnalysisOutput[]; trace: TraceStep[]; units: number; mode: string; saved: boolean; notice?: string }
   | { kind: "error"; url?: string; message: string; trace?: TraceStep[] };
 
 interface Props {
@@ -51,7 +52,22 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
   const streamRef = useRef<MediaStream | null>(null);
   const [live, setLive] = useState<{ brightness: number; face: number | null; detector: boolean }>({ brightness: 0, face: null, detector: false });
   const [cameraError, setCameraError] = useState<string | null>(null);
+  // Live analysis for this visitor right now? Asked before any photo is sent, so a photo is
+  // never uploaded when it would only run in demo mode.
+  const [liveOk, setLiveOk] = useState<{ ok: boolean; left?: number; notice?: string }>({ ok: mode === "live" && liveUploads });
   useImmersive(phase.kind !== "consent");
+
+  useEffect(() => {
+    if (mode !== "live") return;
+    let gone = false;
+    fetch("/api/youcam/status", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j: { live?: boolean; left?: number; notice?: string }) => !gone && setLiveOk({ ok: j.live === true, left: j.left, notice: j.notice }))
+      .catch(() => !gone && setLiveOk({ ok: false }));
+    return () => {
+      gone = true;
+    };
+  }, [mode, phase.kind]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -93,6 +109,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1706 } }, audio: false });
       streamRef.current = stream;
+      reportAction("camera_open");
       setPhase({ kind: "camera" });
       requestAnimationFrame(() => {
         if (videoRef.current) {
@@ -101,6 +118,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
         }
       });
     } catch (e) {
+      reportAction("camera_denied");
       setCameraError(
         e instanceof Error && e.name === "NotAllowedError"
           ? "Camera access was declined. You can allow it in your browser settings, or use the sample photo to see the full flow."
@@ -126,7 +144,9 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
       (blob) => {
         if (!blob) return;
         stopCamera();
-        setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report: checkCapture(quality, baseline ?? undefined), source: "camera" });
+        const report = checkCapture(quality, baseline ?? undefined);
+        if (!report.ok) reportAction("quality_blocked");
+        setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report, source: "camera" });
       },
       "image/jpeg",
       0.9,
@@ -134,6 +154,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
   }
 
   function useSample() {
+    reportAction("sample_photo");
     const canvas = sampleImage();
     const small = document.createElement("canvas");
     small.width = 64;
@@ -151,14 +172,15 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
     );
   }
 
-  async function analyze(url: string, size: number, quality: CaptureQuality) {
+  async function analyze(url: string, size: number, quality: CaptureQuality, source: "camera" | "sample") {
     if (!target) return;
     setPhase({ kind: "analyzing", url, stage: 0, quality });
     const tick = setInterval(() => setPhase((p) => (p.kind === "analyzing" ? { ...p, stage: Math.min(STAGES.length - 1, p.stage + 1) } : p)), 420);
     try {
       let res: Response;
       const day = new Date().toLocaleDateString("en-CA");
-      if (mode === "live" && liveUploads) {
+      // The sample photo has no face: it always runs in demo mode, live units are kept for real photos.
+      if (mode === "live" && liveOk.ok && source === "camera") {
         const form = new FormData();
         form.set("photo", await (await fetch(url)).blob(), `verdict-${day}.jpg`);
         form.set("concerns", target.concerns.join(","));
@@ -184,7 +206,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
         saved = addUserCapture(id, { id: `u-${Date.now()}`, productId: id, takenOn: day, quality, scores });
         if (saved) toast({ title: "Added to your timeline", detail: `${target.name}, ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`, tone: "ok" });
       }
-      setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved });
+      setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved, notice: json.notice });
     } catch (e) {
       clearInterval(tick);
       setPhase({ kind: "error", url, message: e instanceof Error ? e.message : String(e) });
@@ -334,10 +356,10 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
                 </li>
               </ul>
               <p className="ui-list__footer">
-                {mode === "live" && liveUploads
-                  ? "The photo is sent to YouCam AI Skin Analysis for the concerns above, and can be deleted at any time."
-                  : "Demo mode: the photo never leaves this device. Only its size is sent, to simulate the upload."}{" "}
-                Each analysis costs {units} units and runs only after the photo passes the quality check on this phone.
+                {liveOk.ok
+                  ? `Live: a camera photo is sent to YouCam AI Skin Analysis for the concerns above, then not kept by Verdict.${liveOk.left != null ? ` ${liveOk.left} live ${liveOk.left === 1 ? "analysis" : "analyses"} left for you today.` : ""}`
+                  : `${liveOk.notice ? `${liveOk.notice.replace(", so this photo ran in demo mode.", ".")} ` : ""}Demo mode: the photo never leaves this device. Only its size is sent, to simulate the upload.`}{" "}
+                {liveOk.ok ? `Each analysis costs ${units} units and runs only after the photo passes the quality check on this phone.` : "No units are spent in demo mode."}
               </p>
             </section>
 
@@ -394,10 +416,10 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
                 <button
                   type="button"
                   disabled={!phase.report.ok}
-                  onClick={() => analyze(phase.url, phase.size, phase.quality)}
+                  onClick={() => analyze(phase.url, phase.size, phase.quality, phase.source)}
                   className="ui-button ui-button--prominent ui-button--xl"
                 >
-                  Analyze · {units} units
+                  {liveOk.ok && phase.source === "camera" ? `Analyze · ${units} units` : "Analyze · demo"}
                 </button>
                 <button type="button" onClick={reset} className="ui-button ui-button--lg">
                   <Icon name="retake" />
@@ -447,7 +469,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
               <section className="ui-list-section" aria-labelledby="r-h">
                 <div className="ui-list__header">
                   <strong id="r-h">Result</strong>
-                  <span>{phase.mode === "mock" ? "Synthetic scores" : "Live"}</span>
+                  <span>{phase.mode === "mock" ? "Synthetic scores" : "Live · YouCam"}</span>
                 </div>
                 <ul className="ui-list">
                   {phase.output
@@ -475,6 +497,14 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
                     : "Demo product: this photo is not added to its synthetic series. Add your own product to build a real timeline."}
                 </p>
               </section>
+              {phase.notice && (
+                <div className="ui-banner" role="status">
+                  <Icon name="info" />
+                  <div>
+                    <p>{phase.notice}</p>
+                  </div>
+                </div>
+              )}
               <TraceList trace={phase.trace} units={phase.units} />
               <div className="vd-actions">
                 <Link href={`/product?id=${encodeURIComponent(id)}`} className="ui-button ui-button--prominent ui-button--xl">

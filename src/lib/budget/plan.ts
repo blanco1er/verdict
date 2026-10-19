@@ -19,15 +19,20 @@ export interface BudgetLine {
 
 export const HACKATHON_UNITS = 1000;
 
+/**
+ * Compressed plan (owner rule: submit by Wednesday 21 Oct 2026, evening).
+ * The first paid call is also calibration photo 1: nothing is spent on a
+ * throw-away smoke test (the key itself is checked with free calls).
+ */
 export const BUDGET_PLAN: BudgetLine[] = [
-  { id: "smoke", when: "24-25 Oct", purpose: "First end-to-end call (upload, task, poll) on 2 consented test selfies", calls: 2, unitsPerCall: SA },
-  { id: "noise", when: "24-25 Oct", purpose: "Noise calibration: 5 photos, same session, same light", calls: 5, unitsPerCall: SA },
-  { id: "series", when: "24 Oct - 1 Nov", purpose: "Real daily series for the pre-filled demo (owner, 1 photo/day)", calls: 9, unitsPerCall: SA },
-  { id: "dev", when: "28-31 Oct", purpose: "Integration and bug fixing with live API", calls: 10, unitsPerCall: SA },
-  { id: "simulation", when: "30-31 Oct", purpose: "Skin Simulation 'promised result' renders (cached)", calls: 3, unitsPerCall: SIM },
-  { id: "look", when: "30-31 Oct", purpose: "Look VTO alternative renders (cached)", calls: 5, unitsPerCall: LOOK_VTO_UNITS },
-  { id: "video", when: "1 Nov", purpose: "Live takes for the demo video", calls: 5, unitsPerCall: SA },
-  { id: "jury", when: "2-20 Nov", purpose: "Reserve for judges testing live (per-visitor cap below)", calls: 50, unitsPerCall: SA },
+  { id: "noise", when: "20-21 Oct", purpose: "Repeatability: 5 photos, same session, same light (first one doubles as the end-to-end check)", calls: 5, unitsPerCall: SA },
+  { id: "control", when: "20-21 Oct", purpose: "Positive control: same face hours later, oiliness is expected to move", calls: 2, unitsPerCall: SA },
+  { id: "series", when: "20-21 Oct", purpose: "Owner's real series on a real product (day 0 = repeatability median, then days 1 and 2)", calls: 3, unitsPerCall: SA },
+  { id: "dev", when: "20-21 Oct", purpose: "Integration and bug fixing with the live API", calls: 6, unitsPerCall: SA },
+  { id: "simulation", when: "21 Oct", purpose: "Skin Simulation 'promised result' renders (cached)", calls: 2, unitsPerCall: SIM },
+  { id: "look", when: "21 Oct", purpose: "Look VTO alternative renders (cached)", calls: 3, unitsPerCall: LOOK_VTO_UNITS },
+  { id: "video", when: "21 Oct", purpose: "Live takes for the demo video", calls: 4, unitsPerCall: SA },
+  { id: "jury", when: "22 Oct - 20 Nov", purpose: "Judges testing live (per-visitor quota, real-balance floor)", calls: 60, unitsPerCall: SA },
 ];
 
 export function plannedUnits(plan: BudgetLine[] = BUDGET_PLAN): number {
@@ -41,10 +46,10 @@ export function safetyMargin(plan: BudgetLine[] = BUDGET_PLAN): number {
 /** Live-mode guards for public visitors (judges). */
 export const VISITOR_LIMITS = {
   analysesPerVisitorPerDay: 3,
-  analysesPerDayGlobal: 12,
-  /** Below this balance, the app switches to the pre-filled demo only. */
-  hardFloorUnits: 60,
-} as const;
+  analysesPerDayGlobal: 15,
+  /** Below this balance, the app switches to the pre-filled demo only (YOUCAM_UNIT_FLOOR overrides it). */
+  hardFloorUnits: 100,
+};
 
 /** Per-visitor daily quota, in memory (swap for a DB row in production). */
 export class VisitorQuota {
@@ -52,15 +57,28 @@ export class VisitorQuota {
   private global = 0;
   private day = "";
 
-  constructor(private readonly limits = VISITOR_LIMITS) {}
+  constructor(private readonly limits: { analysesPerVisitorPerDay: number; analysesPerDayGlobal: number; hardFloorUnits: number } = VISITOR_LIMITS) {}
 
-  /** Returns true and counts the call if allowed. */
-  tryConsume(visitorId: string, today: string, remainingUnits: number): boolean {
+  private roll(today: string) {
     if (today !== this.day) {
       this.day = today;
       this.perVisitor.clear();
       this.global = 0;
     }
+  }
+
+  /** What is left today, without counting anything. */
+  leftFor(visitorId: string, today: string): { visitor: number; global: number } {
+    this.roll(today);
+    return {
+      visitor: this.limits.analysesPerVisitorPerDay - (this.perVisitor.get(visitorId) ?? 0),
+      global: this.limits.analysesPerDayGlobal - this.global,
+    };
+  }
+
+  /** Returns true and counts the call if allowed. */
+  tryConsume(visitorId: string, today: string, remainingUnits: number): boolean {
+    this.roll(today);
     if (remainingUnits - SA < this.limits.hardFloorUnits) return false;
     if (this.global >= this.limits.analysesPerDayGlobal) return false;
     const used = this.perVisitor.get(visitorId) ?? 0;

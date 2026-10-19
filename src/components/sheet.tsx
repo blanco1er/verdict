@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { reportAction } from "@/components/visit-beacon";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { closeSheet, init, openSheet } from "@/design-system/motion.js";
 import { Icon } from "@/components/icons";
@@ -130,7 +132,7 @@ export function DemoNote({ label = "Synthetic data" }: { label?: string }) {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" className="vd-demo-note" onClick={() => setOpen(true)} aria-haspopup="dialog">
+      <button type="button" className="vd-demo-note" onClick={() => (reportAction("sheet_about"), setOpen(true))} aria-haspopup="dialog">
         <Icon name="info" />
         {label}
       </button>
@@ -153,8 +155,16 @@ export function DemoNote({ label = "Synthetic data" }: { label?: string }) {
             With the live key, the same screens call YouCam AI Skin Analysis, Skin Simulation and Look VTO.
           </li>
           <li>
+            <Icon name="checkCircle" />
+            <span>
+              Real YouCam results on the maker&apos;s own skin are on <Link href="/measured">Measured</Link>, labelled as real data.
+            </span>
+          </li>
+          <li>
             <Icon name="info" />
-            Cosmetic guidance only, not medical advice.
+            <span>
+              Cosmetic guidance only, not medical advice. Anonymous usage is logged to improve the demo (<Link href="/privacy">Privacy</Link>).
+            </span>
           </li>
         </ul>
       </Sheet>
