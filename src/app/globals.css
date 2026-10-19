@@ -133,6 +133,10 @@
   .vd-empty > svg.ui-icon { width: 28px; height: 28px; color: var(--label-secondary); }
   .vd-empty h2 { margin: 4px 0 0; font: var(--weight-semibold) var(--text-title3)/1.25 var(--font-display); letter-spacing: var(--tracking-title3); }
   .vd-empty p { margin: 0; color: var(--label-secondary); max-width: 62ch; text-wrap: pretty; }
+  .vd-before-after { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .vd-before-after figure { margin: 0; display: grid; gap: 6px; }
+  .vd-before-after img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 14px; background: var(--fill-tertiary, rgba(120,120,128,.12)); }
+  .vd-before-after figcaption { font-size: var(--text-footnote); color: var(--label-secondary); text-align: center; }
   .vd-num { font-variant-numeric: tabular-nums; font-weight: var(--weight-semibold); color: var(--label); }
   .vd-num small { font-weight: var(--weight-regular); color: var(--label-secondary); }
 

@@ -95,7 +95,8 @@ export async function POST(request: Request) {
     const output = await client.analyzeSkin({ src_file_id: fileId }, concerns);
     if (mode === "live") liveGate().spent(units);
     log("ok");
-    return Response.json({ mode, units: mode === "live" ? units : 0, concerns, output, trace: trace.steps, notice });
+    // Live only: the file id lets the same photo feed Skin Simulation without a second upload.
+    return Response.json({ mode, units: mode === "live" ? units : 0, concerns, output, trace: trace.steps, notice, fileId: mode === "live" ? fileId : undefined });
   } catch (error) {
     const steps = trace.steps;
     if (error instanceof UnitBudgetExceeded) {

@@ -296,7 +296,7 @@ function NextSteps({ item, status, isDemo }: { item: DemoItem; status: VerdictSt
   const offerLook = status === "return" || status === "stop" || status === "mixed";
   const id = encodeURIComponent(item.product.id);
   const live = () =>
-    toast({ title: "Runs with the live API key", detail: "Demo mode: nothing was sent and no units were spent.", tone: "info" });
+    toast({ title: "Needs a real photo", detail: "Demo products have no day-0 photo. Take a photo: with the live API, its result screen renders this. Nothing was sent.", tone: "info" });
 
   return (
     <section className="ui-list-section no-print" aria-labelledby="n-h">

@@ -9,10 +9,10 @@ import { LargeTitle, Row } from "@/components/ui";
 import { reportAction } from "@/components/visit-beacon";
 import { toast } from "@/design-system/motion.js";
 import { addUserCapture, loadUserItems } from "@/lib/demo/store";
-import { concernDef } from "@/lib/tracking/concerns";
+import { concernDef, simulationFor } from "@/lib/tracking/concerns";
 import type { CaptureQuality } from "@/lib/tracking/model";
 import { ISSUE_HINTS, QUALITY_RULES, checkCapture, type QualityReport } from "@/lib/tracking/quality";
-import { skinAnalysisCost } from "@/lib/youcam/costs";
+import { skinAnalysisCost, skinSimulationCost } from "@/lib/youcam/costs";
 import type { SdAction, SkinAnalysisOutput } from "@/lib/youcam/types";
 
 interface TraceStep {
@@ -27,7 +27,7 @@ type Phase =
   | { kind: "camera" }
   | { kind: "review"; url: string; size: number; quality: CaptureQuality; report: QualityReport; source: "camera" | "sample" }
   | { kind: "analyzing"; url: string; stage: number; quality: CaptureQuality }
-  | { kind: "done"; url: string; output: SkinAnalysisOutput[]; trace: TraceStep[]; units: number; mode: string; saved: boolean; notice?: string }
+  | { kind: "done"; url: string; output: SkinAnalysisOutput[]; trace: TraceStep[]; units: number; mode: string; saved: boolean; notice?: string; fileId?: string }
   | { kind: "error"; url?: string; message: string; trace?: TraceStep[] };
 
 interface Props {
@@ -206,7 +206,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
         saved = addUserCapture(id, { id: `u-${Date.now()}`, productId: id, takenOn: day, quality, scores });
         if (saved) toast({ title: "Added to your timeline", detail: `${target.name}, ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`, tone: "ok" });
       }
-      setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved, notice: json.notice });
+      setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved, notice: json.notice, fileId: json.fileId });
     } catch (e) {
       clearInterval(tick);
       setPhase({ kind: "error", url, message: e instanceof Error ? e.message : String(e) });
@@ -506,6 +506,7 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
                 </div>
               )}
               <TraceList trace={phase.trace} units={phase.units} />
+              <PromisedResult before={phase.url} live={phase.mode === "live"} fileId={phase.fileId} concerns={target.concerns} />
               <div className="vd-actions">
                 <Link href={`/product?id=${encodeURIComponent(id)}`} className="ui-button ui-button--prominent ui-button--xl">
                   See the timeline
@@ -619,6 +620,75 @@ function TraceList({ trace, units }: { trace: TraceStep[]; units: number }) {
         ))}
       </ol>
       <p className="ui-list__footer">The pre-signed upload URL is never shown or logged. The API key stays on the server.</p>
+    </section>
+  );
+}
+
+/** "The promised result": YouCam Skin Simulation on the photo just analysed live (same file, no second upload). */
+function PromisedResult({ before, live, fileId, concerns }: { before: string; live: boolean; fileId?: string; concerns: SdAction[] }) {
+  const params = simulationFor(concerns, 0.5);
+  const active = Object.keys(params).length;
+  const [sim, setSim] = useState<{ state: "idle" | "busy" | "done" | "error"; url?: string; units?: number; trace?: TraceStep[]; error?: string }>({ state: "idle" });
+  if (active === 0) return null;
+  const units = skinSimulationCost(active);
+  const labels = concerns.filter((c) => concernDef(c).simulation).map((c) => concernDef(c).label.toLowerCase()).join(" and ");
+
+  async function render() {
+    setSim({ state: "busy" });
+    try {
+      const res = await fetch("/api/youcam/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId, concerns }) });
+      const json = await res.json();
+      if (!res.ok) return setSim({ state: "error", error: json.detail ? `${json.error}. ${json.detail}` : json.error ?? `HTTP ${res.status}`, trace: json.trace });
+      reportAction("sheet_promised");
+      setSim({ state: "done", url: json.url, units: json.units, trace: json.trace });
+    } catch (e) {
+      setSim({ state: "error", error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  return (
+    <section className="ui-list-section" aria-labelledby="sim-h">
+      <div className="ui-list__header">
+        <strong id="sim-h">The promised result</strong>
+        <span>Skin Simulation</span>
+      </div>
+      {sim.state === "done" && sim.url ? (
+        <div className="vd-panel vd-panel--pad">
+          <div className="vd-before-after">
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+              <img src={before} alt="Your photo today" />
+              <figcaption>Today</figcaption>
+            </figure>
+            <figure>
+              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived YouCam result URL, not stored */}
+              <img src={sim.url} alt={`YouCam Skin Simulation: ${labels} improved at 50% intensity`} />
+              <figcaption>If it works</figcaption>
+            </figure>
+          </div>
+        </div>
+      ) : (
+        <ul className="ui-list">
+          <li>
+            {live && fileId ? (
+              <button type="button" className="ui-row vd-row-accent" onClick={render} disabled={sim.state === "busy"} style={{ width: "100%", textAlign: "left" }}>
+                <span className="ui-row__icon">
+                  <Icon name="compare" />
+                </span>
+                <span className="ui-row__body">
+                  <span className="ui-row__title">{sim.state === "busy" ? "Rendering…" : `See the promised result · ${units} units`}</span>
+                  <span className="ui-row__subtitle">Your photo with {labels} improved at 50% intensity: what &ldquo;working&rdquo; should look like.</span>
+                </span>
+              </button>
+            ) : (
+              <Row icon="compare" title="See the promised result" subtitle={`With the live API, YouCam Skin Simulation renders this photo with ${labels} improved (${units} units). Demo mode sends nothing.`} />
+            )}
+          </li>
+        </ul>
+      )}
+      {sim.state === "error" && <p className="ui-list__footer" role="alert">{sim.error} No units were charged.</p>}
+      {sim.state === "done" && <p className="ui-list__footer">Rendered by YouCam from the same uploaded file, no second upload. The result link expires after about two hours and is not stored.</p>}
+      {sim.trace && sim.trace.length > 0 && <TraceList trace={sim.trace} units={sim.state === "done" ? (sim.units ?? units) : 0} />}
     </section>
   );
 }
