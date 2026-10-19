@@ -5,17 +5,19 @@
 #   zsh scripts/deploy-vercel.sh --env      variables seulement
 #   LIVE_PUBLIC=0 zsh scripts/deploy-vercel.sh   coupe l'analyse réelle pour les visiteurs (démo seulement)
 # Prérequis (propriétaire, une fois) : npx --yes vercel@62.0.0 login
+# Exemple : VERDICT_R2_FILE=~/chemin/vers/r2.json zsh scripts/deploy-vercel.sh
 set -euo pipefail
 cd "${0:A:h}/.."
 PROJECT="${VERDICT_VERCEL_PROJECT:-verdict-youcam}"
 VC=(npx --yes vercel@62.0.0)
 export VERCEL_TELEMETRY_DISABLED=1
-R2="$HOME/Library/Application Support/StudioPilot/secrets/r2-mandat.json"
+# Fichier JSON local des identifiants R2 (champs account_id, access_key_id, secret_access_key, bucket), hors du dépôt.
+R2="${VERDICT_R2_FILE:-}"
 
 "${VC[@]}" whoami >/dev/null 2>&1 || { echo "Vercel n'est pas connecté. Lancez d'abord : npx --yes vercel@62.0.0 login"; exit 1; }
 KEY=$(security find-generic-password -s verdict-youcam -a youcam -w 2>/dev/null) || { echo "Clé YouCam absente : zsh scripts/set-youcam-key.sh"; exit 1; }
 TOK=$(security find-generic-password -s verdict-visits -a verdict -w 2>/dev/null) || { echo "Jeton des visites absent : zsh scripts/visits-token.sh"; exit 1; }
-[ -f "$R2" ] || { echo "Identifiants R2 introuvables ($R2) : les visites ne seraient pas gardées."; exit 1; }
+[ -n "$R2" ] && [ -f "$R2" ] || { echo "Donnez le fichier des identifiants R2 : VERDICT_R2_FILE=/chemin/r2.json zsh scripts/deploy-vercel.sh (sinon les visites ne seraient pas gardées)."; exit 1; }
 r2() { node -e 'process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"))[process.argv[2]]||""))' "$R2" "$1"; }
 
 [ -f .vercel/project.json ] || "${VC[@]}" link --yes --project "$PROJECT" >/dev/null
