@@ -28,7 +28,7 @@ export default function MerchantPage() {
         <div className="vd-stack">
           <p className="vd-summary">
             <strong>{tracking.toLocaleString("en-US")} customers</strong> are tracking {ROWS.length} products. {pct(improved)}% saw the promised change
-            before their return deadline. <strong className="is-return">{worst.sku}</strong> is driving returns at {pct(worst.returned)}%.
+            before their return deadline. <strong>{worst.sku}</strong> is driving returns at {pct(worst.returned)}%.
           </p>
 
           <div className="vd-panel">

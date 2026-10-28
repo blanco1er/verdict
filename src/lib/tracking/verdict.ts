@@ -76,7 +76,11 @@ export function computeVerdict(
     );
   }
 
-  const names = (xs: typeof list) => xs.map((x) => concernDef(x.action).label.toLowerCase()).join(", ");
+  // "redness", "redness and pores", "redness, pores and oiliness"
+  const names = (xs: typeof list) => {
+    const l = xs.map((x) => concernDef(x.action).label.toLowerCase());
+    return l.length < 2 ? l.join("") : `${l.slice(0, -1).join(", ")} and ${l.at(-1)}`;
+  };
   const base = { deadline, decisionDate, daysToDeadline, trends, usableCaptures: usable.length, promiseExceedsWindow };
   const done = (status: VerdictStatus, headline: string, nextCaptureOn: IsoDay | null = null): Verdict => ({
     ...base,

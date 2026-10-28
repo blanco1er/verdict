@@ -141,11 +141,8 @@
   .vd-num small { font-weight: var(--weight-regular); color: var(--label-secondary); }
 
   /* ---------- Summary sentence (content first) ------------------------- */
-  .vd-summary { margin: 0; font-size: var(--text-title3); line-height: 1.38; letter-spacing: var(--tracking-title3); text-wrap: pretty; }
-  .vd-summary strong { font-weight: var(--weight-semibold); }
-  .vd-summary .is-keep { color: var(--vd-keep-text); }
-  .vd-summary .is-return { color: var(--vd-return-text); }
-  @media (max-width: 699px) { .vd-summary { font-size: 1.1875rem; } }
+  .vd-summary { margin: 0; color: var(--label-secondary); font-size: var(--text-body); line-height: 1.45; text-wrap: pretty; }
+  .vd-summary strong { color: var(--label); font-weight: var(--weight-semibold); }
 
   /* ---------- Panels (content layer: opaque, no glass) ---------------- */
   .vd-panel { background: var(--bg-grouped-secondary); border-radius: var(--vd-card-radius); }

@@ -52,15 +52,15 @@ export default function Today() {
         <div className="vd-cols">
           <div className="vd-stack">
             <p className="vd-summary">
-              <strong className="is-keep">{featured.product.name} is working.</strong> Keep it: the verdict landed {plural(early, "day")} before the
-              return deadline, on {fmtDay(sum.decided?.on ?? DEMO_TODAY)}.
+              <strong>{featured.product.name}</strong> is working: keep it. The verdict came {plural(early, "day")} before the return
+              deadline.
               {back && (
                 <>
                   {" "}
-                  {back.item.product.name} showed no change, <strong className="is-return">so it goes back by {fmtDay(back.v.deadline)}</strong>.
+                  <strong>{back.item.product.name}</strong> shows no change: return it by {fmtDay(back.v.deadline)}.
                 </>
               )}
-              {stop && <> {stop.item.product.name} is making redness worse.</>}
+              {stop && <> <strong>{stop.item.product.name}</strong> is making redness worse.</>}
             </p>
 
             <section className="vd-panel overflow-hidden" aria-label="Featured verdict">
