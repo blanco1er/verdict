@@ -9,6 +9,7 @@ import { Bottle } from "@/components/vx/live";
 import { bottleKind } from "@/components/vx/product-bits";
 import { toast } from "@/design-system/motion.js";
 import { saveProductThumb, saveUserProduct, useLocalToday } from "@/lib/demo/store";
+import { fitPhoto } from "@/lib/fit-photo";
 import { concernDef, readClaim } from "@/lib/tracking/concerns";
 import { newProduct, trackingPlan } from "@/lib/tracking/plan";
 import type { SdAction } from "@/lib/youcam/types";
@@ -193,7 +194,7 @@ export function ScanProduct() {
             <Icon name="tag" />
             Type it
           </button>
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && void read(e.target.files[0])} />
+          <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void fitPhoto(f, 1600).then(read); e.target.value = ""; }} />
         </div>
       </div>
     );

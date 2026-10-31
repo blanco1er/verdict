@@ -31,6 +31,8 @@ function luma(d: Uint8ClampedArray, x0 = 0, x1 = 1, w = 1): number {
   return n ? s / n / 255 : 0;
 }
 
+const MAX_SIDE = 2048;
+
 /**
  * Frames the face the way YouCam wants it (face about 2/3 of the width, 3:4 portrait),
  * so a selfie taken from afar or imported from the library still measures well.
@@ -38,9 +40,10 @@ function luma(d: Uint8ClampedArray, x0 = 0, x1 = 1, w = 1): number {
 function cropToFace(src: CanvasImageSource, w: number, h: number, l: NormalizedLandmark[] | null): { canvas: HTMLCanvasElement; faceRatio: number } {
   const out = document.createElement("canvas");
   if (!l) {
-    out.width = w;
-    out.height = h;
-    out.getContext("2d")!.drawImage(src, 0, 0);
+    const k = Math.min(1, MAX_SIDE / Math.max(w, h));
+    out.width = Math.round(w * k);
+    out.height = Math.round(h * k);
+    out.getContext("2d")!.drawImage(src, 0, 0, out.width, out.height);
     return { canvas: out, faceRatio: 0 };
   }
   const b = faceBox(l);
@@ -52,7 +55,8 @@ function cropToFace(src: CanvasImageSource, w: number, h: number, l: NormalizedL
   cw = Math.min(cw, (ch * 3) / 4);
   const x = Math.max(0, Math.min(w - cw, cx - cw / 2));
   const y = Math.max(0, Math.min(h - ch, cy - ch * 0.48));
-  const scale = Math.max(1, 720 / cw);
+  // At least 720 px wide for YouCam; at most MAX_SIDE tall, so a 48 MP import still uploads.
+  const scale = Math.min(Math.max(1, 720 / cw), MAX_SIDE / ch);
   out.width = Math.round(cw * scale);
   out.height = Math.round(ch * scale);
   const ctx = out.getContext("2d")!;
