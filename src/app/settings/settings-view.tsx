@@ -170,7 +170,6 @@ export function SettingsView() {
         <ul className="vx-rows">
           {[
             ["/agent", "How it works"],
-            ["/measured", "Real measurements"],
             ["/privacy", "Privacy"],
           ].map(([href, label]) => (
             <li key={href}>

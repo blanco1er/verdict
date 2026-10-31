@@ -2,9 +2,28 @@
 
 import Link from "next/link";
 import { reportAction } from "@/components/visit-beacon";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { closeSheet, init, openSheet } from "@/design-system/motion.js";
 import { Icon } from "@/components/icons";
+
+/**
+ * A modal <dialog> left open when its page is hidden or unmounted (a link inside it, Back)
+ * keeps the whole document inert: nothing can be tapped any more. Close it first.
+ */
+function useModalRelease(ref: RefObject<HTMLDialogElement | null>) {
+  useLayoutEffect(() => {
+    const d = ref.current;
+    if (!d) return;
+    const onLink = (e: MouseEvent) => {
+      if ((e.target as Element).closest?.("a[href]") && d.open) d.close("navigate");
+    };
+    d.addEventListener("click", onLink);
+    return () => {
+      d.removeEventListener("click", onLink);
+      if (d.open) d.close("navigate");
+    };
+  }, [ref]);
+}
 
 /**
  * Native <dialog> sheet from the design system: bottom sheet on iPhone (drag to
@@ -45,6 +64,7 @@ export function Sheet({
     if (open && !d.open) openSheet(d);
     if (!open && d.open) closeSheet(d);
   }, [open]);
+  useModalRelease(ref);
   return (
     <div ref={wrap}>
       <dialog ref={ref} className="ui-sheet" aria-labelledby={id}>
@@ -100,6 +120,7 @@ export function Alert({
     if (open && !d.open) openSheet(d);
     if (!open && d.open) closeSheet(d);
   }, [open]);
+  useModalRelease(ref);
   return (
     <div ref={wrap}>
       <dialog ref={ref} className="ui-sheet ui-alert ui-glass" aria-labelledby={id} role="alertdialog">
