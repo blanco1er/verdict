@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { reportAction } from "@/components/visit-beacon";
 import { toast } from "@/design-system/motion.js";
+import { fitPhoto } from "@/lib/fit-photo";
 import { deleteLook, saveLook, shareLook } from "@/lib/gallery";
 import SAMPLE_TRYONS from "@/lib/live/sample-tryons.json";
 import type { TryKind, TryTemplate } from "@/lib/youcam/client";
@@ -18,6 +19,17 @@ const KINDS: Array<{ kind: Kind; label: string }> = [
 const READY = SAMPLE_TRYONS as Record<string, { kind: string; url: string }>;
 const SAMPLE = "/sample/selfie.jpg";
 const SAMPLE_BODY = "/sample/body.jpg";
+
+type TryReply = { url?: string; notice?: string; error?: string; detail?: string };
+
+/** The route answers JSON; a platform refusal (too large, timeout) does not, and is not a lost connection. */
+async function readTry(res: Response): Promise<TryReply> {
+  try {
+    return (await res.json()) as TryReply;
+  } catch {
+    return { error: res.status === 413 ? "This photo is too large. Nothing was charged." : "This try-on did not work. Nothing was charged." };
+  }
+}
 
 /**
  * Try: a mirror. Your photo, large; a strip of styles under it; tap one and the mirror
@@ -86,10 +98,11 @@ export function TryView() {
       const form = new FormData();
       form.set("kind", kind);
       form.set("template", t.id);
-      form.set("photo", base);
+      form.set("photo", await fitPhoto(base));
       const res = await fetch("/api/youcam/try", { method: "POST", body: form });
-      const j = await res.json();
-      if (j.url) setResults((r) => ({ ...r, [k]: j.url }));
+      const j = await readTry(res);
+      const url = j.url;
+      if (url) setResults((r) => ({ ...r, [k]: url }));
       else setNote(j.notice ?? (j.detail ? `${j.error}. ${j.detail}` : (j.error ?? "This try-on did not work. No units were charged.")));
     } catch {
       setNote("No connection. Nothing was charged.");
@@ -120,12 +133,13 @@ export function TryView() {
       const base = photo.file ?? new File([await (await fetch(baseUrl)).blob()], "photo.jpg", { type: "image/jpeg" });
       const form = new FormData();
       form.set("kind", kind);
-      form.set("photo", base);
-      form.set("ref", ref);
+      form.set("photo", await fitPhoto(base));
+      form.set("ref", await fitPhoto(ref));
       const res = await fetch("/api/youcam/try", { method: "POST", body: form });
-      const j = await res.json();
-      if (j.url) {
-        setResults((r) => ({ ...r, [k]: j.url }));
+      const j = await readTry(res);
+      const url = j.url;
+      if (url) {
+        setResults((r) => ({ ...r, [k]: url }));
       } else setNote(j.notice ?? (j.detail ? `${j.error}. ${j.detail}` : (j.error ?? "This try-on did not work. No units were charged.")));
     } catch {
       setNote("No connection. Nothing was charged.");
