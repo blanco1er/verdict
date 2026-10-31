@@ -64,8 +64,13 @@ export function trackingPlan(claim: string, purchasedOn: IsoDay, returnWindowDay
   };
 }
 
-export function newProduct(input: { name: string; brand?: string; claim: string; purchasedOn: IsoDay; returnWindowDays: number }, id: string): Product {
-  const reading = readClaim(input.claim);
+export function newProduct(
+  input: { name: string; brand?: string; claim: string; purchasedOn: IsoDay; returnWindowDays: number; concerns?: SdAction[]; promisedDays?: number | null },
+  id: string,
+): Product {
+  const read = readClaim(input.claim);
+  // A scan can bring the concerns read from the packaging; the claim rules stay the fallback.
+  const reading = { concerns: input.concerns?.length ? input.concerns.slice(0, 4) : read.concerns, promisedDays: input.promisedDays ?? read.promisedDays };
   return {
     id,
     name: input.name.trim() || "My product",

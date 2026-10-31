@@ -35,6 +35,13 @@ print -rn -- "${LIVE_PUBLIC:-1}" | put YOUCAM_PUBLIC_LIVE config
 print -rn -- "${UNIT_FLOOR:-100}" | put YOUCAM_UNIT_FLOOR config
 print -rn -- "${UNIT_CAP:-800}" | put YOUCAM_UNIT_CAP config
 print -rn -- "$TOK" | put VERDICT_VISITS_TOKEN secret
+GEM=$(security find-generic-password -s verdict-gemini -a gemini -w 2>/dev/null || true)
+if [ -n "$GEM" ]; then
+  print -rn -- "$GEM" | put GEMINI_API_KEY secret
+  print -rn -- "${GEMINI_MODEL:-gemini-2.5-flash}" | put GEMINI_MODEL config
+else
+  echo "  (pas de clé Gemini : le scan produit proposera la saisie. zsh scripts/set-gemini-key.sh)"
+fi
 r2 account_id | put VERDICT_R2_ACCOUNT_ID secret
 r2 access_key_id | put VERDICT_R2_ACCESS_KEY_ID secret
 r2 secret_access_key | put VERDICT_R2_SECRET_ACCESS_KEY secret

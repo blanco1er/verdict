@@ -5,14 +5,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { NavBar } from "@/components/chrome";
-import { ChartLegend, ConcernChart } from "@/components/concern-chart";
 import { Icon } from "@/components/icons";
 import { Alert, DemoNote, Sheet } from "@/components/sheet";
-import { LargeTitle, Row, STATUS, VerdictHero, WindowTrack, fmtDay, plural } from "@/components/ui";
+import { LargeTitle, Row, STATUS, fmtDay, plural } from "@/components/ui";
+import { Bottle, Spark, WindowRing } from "@/components/vx/live";
+import { WORD, bottleKind, shortDay } from "@/components/vx/product-bits";
 import { toast } from "@/design-system/motion.js";
 import { replay, type DemoItem } from "@/lib/demo/shelf";
-import { decidedSentence, trackVerdictLabel, verdictSummary } from "@/lib/demo/summary";
-import { deleteUserProduct, loadUserItems, useLocalToday } from "@/lib/demo/store";
+import { decidedSentence, verdictSummary } from "@/lib/demo/summary";
+import { deleteUserProduct, loadUserItems, readProductThumb, useLocalToday } from "@/lib/demo/store";
 import { concernDef, simulationFor } from "@/lib/tracking/concerns";
 import { addDays, daysBetween, type IsoDay } from "@/lib/tracking/model";
 import { computeVerdict, type VerdictStatus } from "@/lib/tracking/verdict";
@@ -58,6 +59,8 @@ export function ProductView({ demo, id, demoToday, autoplay }: { demo: DemoItem 
   }
   return <Tracked item={item} today={today} isDemo={demo != null} autoplay={autoplay} />;
 }
+
+const noThumbEvents = () => () => {};
 
 function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: IsoDay; isDemo: boolean; autoplay: boolean }) {
   const { product, captures } = item;
@@ -127,162 +130,195 @@ function Tracked({ item, today, isDemo, autoplay }: { item: DemoItem; today: Iso
     }
   }
 
+  const [tab, setTab] = useState<"results" | "promise" | "next">("results");
+  const thumb = useSyncExternalStore(noThumbEvents, () => (isDemo ? null : readProductThumb(item.product.id)), () => null);
+  const left = Math.max(0, win - day);
+  const photoDays = new Set(captures.filter((c) => c.takenOn <= asOf).map((c) => daysBetween(product.purchasedOn, c.takenOn)));
+
   return (
-    <>
-      <NavBar
-        title={product.name}
-        back={{ href: "/", label: "Today" }}
-        trailing={
-          <button type="button" className="ui-icon-button ui-glass vd-glass-btn" onClick={share} aria-label="Share this verdict" title="Share">
+    <main className="vx-page">
+      <div className="vx-top">
+        <Link href="/" className="vx-round" aria-label="Back to Today" title="Today">
+          <Icon name="back" />
+        </Link>
+        <div className="flex items-center gap-2">
+          {isDemo && <DemoNote label="Demo" />}
+          <button type="button" className="vx-round" onClick={share} aria-label="Share this verdict" title="Share">
             <Icon name="share" />
           </button>
-        }
-      />
-      <main className="vd-page">
-        <LargeTitle title={product.name}>
-          <span>{[product.brand, item.retailer, item.price].filter(Boolean).join(" · ")}</span>
-          {isDemo ? <DemoNote /> : <span>On this device</span>}
-        </LargeTitle>
-
-        <div className="vd-cols">
-          <div className="vd-stack">
-            <section className="vd-panel relative" aria-label="Verdict">
-              {changes > 0 && v.status === "keep" && <span key={changes} className="vd-flash" aria-hidden />}
-              <VerdictHero key={`${v.status}-${changes}`} status={v.status} headline={v.headline} meta={meta} changed={changes > 0} />
-              <div className="px-5 pb-5">
-                <WindowTrack
-                  product={product}
-                  frames={frames}
-                  day={day}
-                  todayDay={todayDay}
-                  verdict={trackVerdictLabel(sum)}
-                  input={
-                    <>
-                      <input
-                        type="range"
-                        className="vd-track__input no-print"
-                        min={0}
-                        max={todayDay}
-                        value={day}
-                        onChange={(e) => {
-                          setPlaying(false);
-                          setDay(Number(e.target.value));
-                        }}
-                        style={{ width: `${((todayDay + 1) / (win + 1)) * 100}%` }}
-                        aria-label="Day of the return window"
-                        aria-valuetext={`Day ${day}, ${fmtDay(asOf)}: ${STATUS[v.status].label}`}
-                      />
-                      <span className="vd-track__focus" aria-hidden />
-                    </>
-                  }
-                />
-                <div className="vd-replay no-print">
-                  <p>
-                    <b>{replaying ? `Day ${day}` : "Today"}</b> · {fmtDay(asOf)} · day {day} of {win}
-                  </p>
-                  <button
-                    type="button"
-                    className="ui-button ui-button--tinted ui-button--lg"
-                    onClick={() => {
-                      if (playing) return setPlaying(false);
-                      reportAction("replay");
-                      if (day >= todayDay) setDay(0);
-                      setPlaying(true);
-                    }}
-                    aria-pressed={playing}
-                  >
-                    <Icon name={playing ? "pause" : "play"} filled={!playing} />
-                    {playing ? "Pause" : day >= todayDay ? "Replay" : "Play"}
-                  </button>
-                </div>
-              </div>
-            </section>
-
-            {v.status === "collecting" && (
-              <Link href={`/capture?id=${encodeURIComponent(product.id)}`} className="ui-button ui-button--prominent ui-button--xl no-print">
-                <Icon name="camera" />
-                Take today&apos;s photo
-              </Link>
-            )}
-
-            <section aria-labelledby="m-h">
-              <div className="vd-section-title">
-                <h2 id="m-h">Measurements</h2>
-                <p>raw_score · higher is better</p>
-              </div>
-              <div className="vd-panel vd-panel--pad">
-                {product.concerns.map((action, i) => (
-                  <ConcernChart key={action} product={product} captures={captures} action={action} index={i} asOfDay={day} decisionDay={decisionDay} trend={v.trends[action]} />
-                ))}
-                <ChartLegend />
-              </div>
-              <p className="vd-footnote mt-2.5">
-                YouCam also returns a display score, calibrated upward by design. Verdict shows it but decides on raw_score, with a least-squares
-                trend and a noise floor.
-              </p>
-            </section>
-          </div>
-
-          <div className="vd-stack">
-            <section className="ui-list-section" aria-labelledby="p-h">
-              <div className="ui-list__header">
-                <strong id="p-h">The promise</strong>
-              </div>
-              <ul className="ui-list vd-kv">
-                <li>
-                  <p className="vd-quote">&ldquo;{product.claim}&rdquo;</p>
-                </li>
-                <li>
-                  <Row title="Tracked" detail={product.concerns.map((c) => concernDef(c).label).join(", ")} />
-                </li>
-                <li>
-                  <Row title="Brand promise" detail={product.promisedDays ? plural(product.promisedDays, "day") : "No time stated"} />
-                </li>
-                <li>
-                  <Row title="Return window" detail={plural(win, "day")} />
-                </li>
-                <li>
-                  <Row title="Each photo" detail={`${skinAnalysisCost(product.concerns)} units`} />
-                </li>
-              </ul>
-              <p className="ui-list__footer">
-                {product.concerns.length} of 16 Skin Analysis concerns, read from the claim. Fewer concerns keep every photo in the 9-unit SD tier.
-              </p>
-            </section>
-
-            {v.promiseExceedsWindow && (
-              <div className="ui-banner ui-banner--warn" role="note">
-                <Icon name="alert" />
-                <div>
-                  <strong>The promise is longer than the return window.</strong>
-                  <p>
-                    The brand says {plural(product.promisedDays ?? 0, "day")}, the store gives {win}. Verdict judges the early trend and tells you before
-                    you lose the right to return.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {v.reasons.length > 0 && (
-              <section className="ui-list-section" aria-labelledby="w-h">
-                <div className="ui-list__header">
-                  <strong id="w-h">Why</strong>
-                </div>
-                <ul className="ui-list">
-                  {v.reasons.map((r) => (
-                    <li key={r}>
-                      <Row icon="info" title={r} />
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-
-            <NextSteps item={item} status={v.status} isDemo={isDemo} />
-          </div>
         </div>
-      </main>
-    </>
+      </div>
+
+      <div className="vx-id">
+        {thumb ? (
+          // eslint-disable-next-line @next/next/no-img-element -- local data URL
+          <img className="vx-id__photo" src={thumb} alt="" />
+        ) : (
+          <Bottle hue={item.hue} level={1 - day / win} kind={bottleKind(product.name)} size={64} status={v.status} />
+        )}
+        <div className="vx-id__text">
+          <h1 className="vx-id__name">{product.name}</h1>
+          <p className="vx-id__line">{[product.brand, item.price, `bought ${shortDay(product.purchasedOn)}`].filter(Boolean).join(" · ")}</p>
+        </div>
+      </div>
+
+      <div className="vx-verdict">
+        <WindowRing day={day} total={win} decisionDay={sum.decided ? sum.decided.day : decisionDay} size={150}>
+          <b>{left}</b>
+          <span>days to return</span>
+        </WindowRing>
+        <div className="min-w-0" aria-live="polite">
+          <p className="vx-verdict__word" data-status={v.status} key={`${v.status}-${changes}`}>
+            <span className={`vx-dot${v.status === "collecting" ? " vx-dot--live" : ""}`} />
+            {WORD[v.status]}
+          </p>
+          <p className="vx-verdict__line">
+            {sum.decided ? (
+              <>
+                Decided {shortDay(sum.decided.on)} · <b>{plural(sum.decided.daysBeforeDeadline, "day")} early</b> · {plural(sum.decided.fromPhotos, "photo")}
+              </>
+            ) : v.status === "collecting" ? (
+              <>
+                {plural(sum.comparableSoFar, "photo")} so far · verdict by <b>{shortDay(sum.dueOn)}</b>
+              </>
+            ) : (
+              v.headline
+            )}
+          </p>
+        </div>
+      </div>
+
+      <div className="vx-window no-print">
+        <div className="vx-window__bar" style={{ gridTemplateColumns: `repeat(${win + 1}, minmax(0, 1fr))` }} aria-hidden>
+          {Array.from({ length: win + 1 }, (_, d) => (
+            <span
+              key={d}
+              className={[
+                "vx-window__day",
+                d <= day ? "is-past" : "",
+                photoDays.has(d) && d <= day ? "is-photo" : "",
+                sum.decided && d === sum.decided.day && d <= day ? "is-decision" : "",
+              ].join(" ")}
+            />
+          ))}
+        </div>
+        <input
+          type="range"
+          className="vx-window__input"
+          min={0}
+          max={todayDay}
+          value={day}
+          onChange={(e) => {
+            setPlaying(false);
+            setDay(Number(e.target.value));
+          }}
+          aria-label="Day of the return window"
+          aria-valuetext={`Day ${day}, ${fmtDay(asOf)}: ${STATUS[v.status].label}`}
+        />
+        <div className="vx-window__legend">
+          <span>
+            Bought <b>{shortDay(product.purchasedOn)}</b>
+          </span>
+          <button
+            type="button"
+            className="vx-quiet"
+            onClick={() => {
+              if (playing) return setPlaying(false);
+              reportAction("replay");
+              if (day >= todayDay) setDay(0);
+              setPlaying(true);
+            }}
+            aria-pressed={playing}
+          >
+            <Icon name={playing ? "pause" : "play"} filled={!playing} />
+            {playing ? `Day ${day}` : replaying ? "Play" : "Replay"}
+          </button>
+          <span>
+            Return by <b>{shortDay(addDays(product.purchasedOn, win))}</b>
+          </span>
+        </div>
+      </div>
+
+      {v.status === "collecting" && (
+        <Link href={`/capture?id=${encodeURIComponent(product.id)}`} className="vx-go vx-go--wide no-print" style={{ marginTop: 22 }}>
+          <Icon name="camera" />
+          Take today&apos;s photo
+        </Link>
+      )}
+
+      <div className="vx-tabs" role="tablist" aria-label="Details">
+        {(
+          [
+            ["results", "Results"],
+            ["promise", "Promise"],
+            ["next", "Next"],
+          ] as const
+        ).map(([k, label]) => (
+          <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "results" && (
+        <div role="tabpanel">
+          {product.concerns.map((action) => {
+            const t = v.trends[action];
+            const values = captures.filter((c) => c.takenOn <= asOf && c.scores[action]).map((c) => c.scores[action]!.raw);
+            const change = t ? t.change : 0;
+            const word = !t || t.direction === "insufficient" ? "Too early" : t.direction === "improving" ? "Better" : t.direction === "worsening" ? "Worse" : "No change";
+            return (
+              <div className="vx-concern" key={`${action}-${values.length}`}>
+                <span className="vx-concern__name">
+                  {concernDef(action).label}
+                  <small>{word}</small>
+                </span>
+                <Spark values={values} width={104} height={34} />
+                <span className="vx-concern__delta">{t && t.direction !== "insufficient" ? `${change > 0 ? "+" : ""}${change.toFixed(1)}` : "–"}</span>
+              </div>
+            );
+          })}
+          {v.reasons.length > 0 && (
+            <ul className="vx-reasons">
+              {v.reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {tab === "promise" && (
+        <div role="tabpanel">
+          <p className="vx-quote">&ldquo;{product.claim}&rdquo;</p>
+          <dl className="vx-kv">
+            <div>
+              <dt>Measured</dt>
+              <dd>{product.concerns.map((c) => concernDef(c).label).join(", ")}</dd>
+            </div>
+            <div>
+              <dt>Brand promise</dt>
+              <dd>{product.promisedDays ? plural(product.promisedDays, "day") : "No time given"}</dd>
+            </div>
+            <div>
+              <dt>Return window</dt>
+              <dd>{plural(win, "day")}</dd>
+            </div>
+            <div>
+              <dt>Each photo</dt>
+              <dd>{skinAnalysisCost(product.concerns)} units</dd>
+            </div>
+          </dl>
+          {v.promiseExceedsWindow && (
+            <p className="vx-callout">
+              The brand needs {product.promisedDays} days. The store gives {win}. Verdict reads the early trend so you can still return it.
+            </p>
+          )}
+        </div>
+      )}
+
+      {tab === "next" && <NextSteps item={item} status={v.status} isDemo={isDemo} />}
+    </main>
   );
 }
 

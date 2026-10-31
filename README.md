@@ -20,16 +20,17 @@ Built for the *YouCam API Skin AI & eCommerce VTO Hackathon* (2026). Mobile-firs
 3. Open the shelf: one product per outcome (keep, return, stop, still measuring).
 4. **Take a photo** → consent → camera (or *Use a sample*) → on-device quality gate → analysis, with every YouCam API
    call listed.
-5. **Add** a product (the + button): paste its claim; Verdict picks the concerns and prices the whole window in units before the
-   first photo.
+5. **Add** a product (the + button): scan the bottle (the label and its promise are read from the photo) or paste the
+   claim; Verdict picks the concerns and prices the whole window in units before the first photo.
+6. **Try**: when the answer is return it, try a makeup look, a hairstyle or an outfit on your own photo with YouCam
+   virtual try-on.
+7. **How it works** (`/agent`): every YouCam call Verdict makes, in order, with its cost.
 
 On a computer, open `/phone` to use the app inside an iPhone frame. Light and dark mode follow the system.
-6. Open **Measured**: real YouCam AI Skin Analysis results on the maker's own skin (repeatability, a real change, a real
-   product on day 2), labelled as real data.
 
 > **Two kinds of data, always labelled.** The demo shelf (four products, 30-day story) is **synthetic**: scores are
 > generated in the exact shape of the documented Skin Analysis response, and every screen says "Synthetic data".
-> The **Measured** page shows **real** API results, labelled "Real data". A photo you take is analysed live only when
+> A photo you take is analysed live only when
 > the deployment allows it and the unit guard agrees; otherwise it runs in demo mode, never leaves your device, and
 > the screen says why.
 
@@ -56,7 +57,9 @@ On a computer, open `/phone` to use the app inside an iPhone frame. Light and da
 | **Skin Simulation** (`/s2s/v2.0/task/skin-simulation`) | "The promised result" on the photo just analysed, reusing its `file_id` | 4 units (1–4 concerns) | live |
 | Credit (`GET /s2s/v1.0/client/credit`) | The real balance behind the unit guard | free | live |
 | Feature cost (`GET /s2s/v2.0/credit/feature-cost`) | Checked by `scripts/live.mjs check` | free | live |
-| **Look VTO** (`/s2s/v2.0/task/look-vto`) | An alternative to try when the verdict is return | 2 units | typed client only, not called by the app yet |
+| **Look VTO** (`/s2s/v2.0/task/look-vto`) | Try an alternative makeup look when the verdict is return | 2 units | live |
+| **Hair Transfer** (`/s2s/v2.1/task/hair-transfer`) | Try a hairstyle on the same photo | 2 units | live |
+| **Clothes VTO** (`/s2s/v2.0/task/cloth-v4`) | Try an outfit on a full-body photo | 2 units | live |
 
 ## Architecture
 
@@ -116,8 +119,11 @@ deploys. Variables: `YOUCAM_MODE`, `YOUCAM_API_KEY`, `YOUCAM_PUBLIC_LIVE`, `YOUC
 ## Notes
 
 - Cosmetic guidance only, not medical advice. Photos need explicit consent and can be deleted.
-- Noise thresholds (`noiseSigma`, `minEffect` in `src/lib/tracking/trend.ts`, 3 raw points) are compared on
-  **Measured** with the test-retest noise actually measured on real photos.
+- Noise thresholds (`noiseSigma`, `minEffect` in `src/lib/tracking/trend.ts`, 3 raw points) are a starting point;
+  `/measured` and `scripts/live.mjs` are ready to compare them with the test-retest noise of real photos (no real
+  session has been recorded yet, and the page says so).
+- Product scan (`/api/product/scan`): a vision model reads only what is printed on the pack (`GEMINI_API_KEY`, 12 scans
+  per visitor per day); without a key, paste the claim instead.
 - `docs/screenshots/`: mock-mode screens (synthetic data), iPhone, iPad and desktop, light and dark. Older screens are in `docs/screenshots/archives/`.
 - `src/design-system/`: the shared design system (tokens, `ui-` components, spring motion), copied in so the repo is self-contained.
 

@@ -97,7 +97,7 @@ export const DEMO_SHELF: DemoItem[] = [
     retailer: "Online store",
     price: "$38",
     story: "Both promised concerns improved: verdict landed 17 days before the deadline.",
-    hue: 152,
+    hue: 36,
   }),
   build({
     id: "pore-toner",
@@ -111,7 +111,7 @@ export const DEMO_SHELF: DemoItem[] = [
     retailer: "Beauty retailer",
     price: "$24",
     story: "28 days, no measurable change: return it before the window closes.",
-    hue: 210,
+    hue: 200,
   }),
   build({
     id: "aha-peel",
@@ -125,7 +125,7 @@ export const DEMO_SHELF: DemoItem[] = [
     retailer: "Online store",
     price: "$29",
     story: "Redness is getting worse: stop now, cosmetic guidance only.",
-    hue: 28,
+    hue: 16,
   }),
   build({
     id: "retinol-cream",
@@ -139,7 +139,7 @@ export const DEMO_SHELF: DemoItem[] = [
     retailer: "Pharmacy",
     price: "$45",
     story: "The brand promises 12 weeks; the return window is 30 days. Verdict judges the early trend.",
-    hue: 280,
+    hue: 40,
   }),
 ];
 

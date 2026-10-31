@@ -49,6 +49,37 @@ export function addUserCapture(productId: string, capture: Capture): boolean {
 
 export function deleteUserProduct(productId: string): void {
   save(loadUserItems().filter((s) => s.product.id !== productId).map(({ product, captures }) => ({ product, captures })));
+  try {
+    window.localStorage.removeItem(THUMB + productId);
+  } catch {
+    /* nothing stored */
+  }
+}
+
+const THUMB = "verdict:thumb:";
+
+/** Keeps a small square of the scanned packshot, so the product shows as itself. */
+export async function saveProductThumb(productId: string, src: string): Promise<void> {
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 240;
+    canvas.getContext("2d")!.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, 240, 240);
+    window.localStorage.setItem(THUMB + productId, canvas.toDataURL("image/jpeg", 0.82));
+  } catch {
+    /* the drawn bottle stays */
+  }
+}
+
+export function readProductThumb(productId: string): string | null {
+  try {
+    return window.localStorage.getItem(THUMB + productId);
+  } catch {
+    return null;
+  }
 }
 
 const noopSubscribe = () => () => {};

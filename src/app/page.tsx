@@ -1,156 +1,166 @@
 import Link from "next/link";
-import { NavBar } from "@/components/chrome";
-import { Icon } from "@/components/icons";
+import { Icon, Logo } from "@/components/icons";
 import { DemoNote } from "@/components/sheet";
-import { ShelfRow } from "@/components/shelf-row";
-import { LargeTitle, Row, VerdictHero, WindowTrack, fmtDay, fmtLongDay, plural } from "@/components/ui";
+import { fmtLongDay } from "@/components/ui";
 import { UserShelf } from "@/components/user-shelf";
-import { DEMO_SHELF, DEMO_TODAY, replay } from "@/lib/demo/shelf";
-import { decidedSentence, trackVerdictLabel, verdictSummary } from "@/lib/demo/summary";
+import { LooksStrip } from "@/components/vx/looks";
+import { Bottle, CountUp } from "@/components/vx/live";
+import { WORD, bottleKind, shortDay, windowLeft } from "@/components/vx/product-bits";
+import { DEMO_SHELF, DEMO_TODAY } from "@/lib/demo/shelf";
+import { verdictSummary } from "@/lib/demo/summary";
 import { daysBetween } from "@/lib/tracking/model";
 import { concernDef } from "@/lib/tracking/concerns";
-import { computeVerdict } from "@/lib/tracking/verdict";
+import { computeVerdict, type Verdict } from "@/lib/tracking/verdict";
+import type { DemoItem } from "@/lib/demo/shelf";
 
-const APIS = [
-  { icon: "face" as const, title: "AI Skin Analysis", detail: "Only the 1 to 4 concerns the product promises: 9 units per photo, SD tier. Trends use raw_score." },
-  { icon: "bolt" as const, title: "File API and task polling", detail: "POST /file, PUT to the pre-signed URL, POST /task, poll until success. Failed tasks cost nothing." },
-  { icon: "compare" as const, title: "Skin Simulation", detail: "The promised result, rendered from your day-0 photo. 4 units, cached." },
-  { icon: "brush" as const, title: "Look VTO", detail: "An alternative to try on your own face when the verdict is return. 2 units." },
-];
+/** The reason, in a few words. */
+function reason(item: DemoItem, v: Verdict): string {
+  const labels = (dir: string) =>
+    item.product.concerns.filter((c) => v.trends[c]?.direction === dir).map((c) => concernDef(c).label.toLowerCase());
+  const list = (l: string[]) => l.join(" and ").replace(/^./, (c) => c.toUpperCase());
+  if (v.status === "keep") return `${list(labels("improving")) || "Better"} better`;
+  if (v.status === "stop") return `${list(labels("worsening")) || "Skin"} getting worse`;
+  if (v.status === "return") return "No measurable change";
+  if (v.status === "collecting") return `Day ${daysBetween(item.product.purchasedOn, DEMO_TODAY)} of ${item.product.returnWindowDays}`;
+  return v.headline;
+}
 
 export default function Today() {
-  const [featured, ...rest] = DEMO_SHELF;
-  const v = computeVerdict(featured.product, featured.captures, DEMO_TODAY);
-  const sum = verdictSummary(featured, DEMO_TODAY);
-  const sentence = decidedSentence(sum);
+  const items = DEMO_SHELF.map((item) => ({ item, v: computeVerdict(item.product, item.captures, DEMO_TODAY) }));
+  const [featured, ...rest] = items;
+  const sum = verdictSummary(featured.item, DEMO_TODAY);
   const early = sum.decided?.daysBeforeDeadline ?? 0;
-  const todayDay = sum.day;
-  const frames = replay(featured, DEMO_TODAY);
-
-  const verdicts = rest.map((item) => ({ item, v: computeVerdict(item.product, item.captures, DEMO_TODAY) }));
-  const back = verdicts.find((x) => x.v.status === "return");
-  const stop = verdicts.find((x) => x.v.status === "stop");
-  const measuring = verdicts.find((x) => x.v.status === "collecting")?.item ?? featured;
-  const measuringDay = daysBetween(measuring.product.purchasedOn, DEMO_TODAY);
+  const measuring = rest.find((x) => x.v.status === "collecting") ?? featured;
+  const mDay = daysBetween(measuring.item.product.purchasedOn, DEMO_TODAY);
+  const photos = items.reduce((n, x) => n + x.item.captures.filter((c) => c.takenOn <= DEMO_TODAY).length, 0);
 
   return (
-    <>
-      <NavBar
-        title="Today"
-        trailing={
-          <Link href="/add" className="ui-icon-button vd-plus" aria-label="Add a product" title="Add a product">
-            <Icon name="plus" />
+    <main className="vx-page">
+      <div className="vx-top">
+        <Link href="/" className="vx-wordmark" aria-label="Verdict">
+          <Logo size={26} />
+          Verdict
+        </Link>
+        <div className="flex items-center gap-2">
+          <DemoNote label="Demo" />
+          <Link href="/settings" className="vx-round" aria-label="Settings" title="Settings">
+            <Icon name="settings" />
           </Link>
-        }
-      />
-      <main className="vd-page">
-        <LargeTitle title="Today">
-          <span>{fmtLongDay(DEMO_TODAY)}</span>
-          <DemoNote />
-        </LargeTitle>
-
-        <div className="vd-cols">
-          <div className="vd-stack">
-            <p className="vd-summary">
-              <strong>{featured.product.name}</strong> is working: keep it. The verdict came {plural(early, "day")} before the return
-              deadline.
-              {back && (
-                <>
-                  {" "}
-                  <strong>{back.item.product.name}</strong> shows no change: return it by {fmtDay(back.v.deadline)}.
-                </>
-              )}
-              {stop && <> <strong>{stop.item.product.name}</strong> is making redness worse.</>}
-            </p>
-
-            <section className="vd-panel overflow-hidden" aria-label="Featured verdict">
-              <VerdictHero
-                status={v.status}
-                headline={v.headline}
-                product={featured.product}
-                subtitle={`${featured.retailer} · ${featured.price} · bought ${fmtDay(featured.product.purchasedOn)}`}
-                href={`/product?id=${featured.product.id}`}
-                compact
-                meta={
-                  sentence && (
-                    <>
-                      {sentence.lead}
-                      <b>{sentence.strong}</b>
-                      {sentence.tail}
-                    </>
-                  )
-                }
-              >
-                <WindowTrack product={featured.product} frames={frames} day={todayDay} todayDay={todayDay} verdict={trackVerdictLabel(sum)} />
-              </VerdictHero>
-              <ul className="ui-list" style={{ borderRadius: 0, borderTop: "0.5px solid var(--separator)" }}>
-                <li>
-                  <Row href={`/product?id=${featured.product.id}&replay=1`} icon="play" title="Replay the 30-day window" subtitle="Watch Measuring turn into Keep it, day by day" tone="accent" />
-                </li>
-              </ul>
-            </section>
-
-            <section className="ui-list-section vd-shelf" aria-labelledby="shelf-h">
-              <div className="ui-list__header">
-                <strong id="shelf-h">Your shelf</strong>
-                <span>{plural(rest.length + 1, "product")}</span>
-              </div>
-              <ul className="ui-list">
-                {rest.map((item) => (
-                  <ShelfRow key={item.product.id} item={item} today={DEMO_TODAY} />
-                ))}
-                <UserShelf />
-                <li>
-                  <Row href="/add" icon="plus" title="Add a product" subtitle="Paste its claim. Verdict prices the window before the first photo." tone="accent" />
-                </li>
-              </ul>
-              <p className="ui-list__footer">One product per outcome: keep, return, stop, and still measuring. Products you add stay in this browser.</p>
-            </section>
-          </div>
-
-          <div className="vd-stack">
-            <section className="ui-list-section" aria-labelledby="how-h">
-              <div className="ui-list__header">
-                <strong id="how-h">How Verdict uses YouCam</strong>
-              </div>
-              <ul className="ui-list">
-                {APIS.map((a) => (
-                  <li key={a.title}>
-                    <Row icon={a.icon} title={a.title} subtitle={a.detail} />
-                  </li>
-                ))}
-                <li>
-                  <Row href="/measured" icon="checkCircle" title="Measured with YouCam" subtitle="Real results on the maker's own skin: noise between photos, a real change, a real product." tone="accent" />
-                </li>
-              </ul>
-              <p className="ui-list__footer">
-                The API key never leaves the server. Every call is listed after each photo, with its unit cost.
-              </p>
-            </section>
-            <section className="ui-list-section" aria-labelledby="next-h">
-              <div className="ui-list__header">
-                <strong id="next-h">Next photo</strong>
-                <span>{fmtDay(DEMO_TODAY)}</span>
-              </div>
-              <ul className="ui-list">
-                <li>
-                  <Row
-                    href={`/capture?id=${measuring.product.id}`}
-                    icon="camera"
-                    title="Take today's photo"
-                    subtitle={`${measuring.product.name}: day ${measuringDay} of ${measuring.product.returnWindowDays}, ${measuring.product.concerns.map((c) => concernDef(c).label.toLowerCase()).join(", ")}`}
-                  />
-                </li>
-              </ul>
-              <p className="ui-list__footer">Same spot, same light as day 0. The photo is checked on this phone before any unit is spent.</p>
-            </section>
-            <p className="vd-footnote">
-              Cosmetic guidance, not medical advice. Photos need your consent, stay private and can be deleted at any time. Anonymous usage is logged to
-              improve the demo · <Link href="/privacy">Privacy</Link>
-            </p>
-          </div>
         </div>
-      </main>
-    </>
+      </div>
+
+      <p className="vx-eyebrow" style={{ marginTop: 18 }}>
+        {fmtLongDay(DEMO_TODAY)} · {items.length} products
+      </p>
+      <h1 className="vx-h1">
+        Is your skincare working? <span style={{ color: "var(--vx-ink-3)" }}>Know before you can&apos;t return it.</span>
+      </h1>
+
+      <section className="vx-shelf" aria-label="Your shelf">
+        <div className="vx-shelf__glow" aria-hidden />
+        <div className="vx-shelf__sweep" aria-hidden />
+        <div className="vx-shelf__stage">
+          {items.map(({ item, v }, i) => {
+            const left = Math.max(0, v.daysToDeadline);
+            return (
+              <Link
+                key={item.product.id}
+                href={`/product?id=${item.product.id}`}
+                className={`vx-slot${i === 0 ? " is-featured" : ""}`}
+                aria-label={`${item.product.name}: ${WORD[v.status]}, ${left} days left to return`}
+              >
+                <Bottle hue={item.hue} level={windowLeft(item, DEMO_TODAY)} kind={bottleKind(item.product.name)} size={i === 0 ? 112 : 96} status={v.status} />
+                <span className="vx-slot__label" data-status={v.status}>
+                  <b>
+                    <span className={`vx-dot${v.status === "collecting" ? " vx-dot--live" : ""}`} />
+                    {v.status === "collecting" ? `Day ${daysBetween(item.product.purchasedOn, DEMO_TODAY)}` : WORD[v.status]}
+                  </b>
+                  <small>{left} d left</small>
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="vx-stats">
+        <div className="vx-stat vx-stat--data">
+          <b>
+            <CountUp value={early} />
+          </b>
+          <span>days before the deadline</span>
+        </div>
+        <div className="vx-stat">
+          <b>
+            <CountUp value={photos} />
+          </b>
+          <span>photos measured</span>
+        </div>
+        <div className="vx-stat">
+          <b>
+            <CountUp value={items.length} />
+          </b>
+          <span>products tracked</span>
+        </div>
+      </div>
+
+      <section className="vx-section" aria-labelledby="verdicts-h">
+        <div className="vx-section__head">
+          <h2 id="verdicts-h">Today&apos;s verdicts</h2>
+          <span>{items.length}</span>
+        </div>
+        <ul className="vx-rows">
+          {items.map(({ item, v }) => (
+            <li key={item.product.id}>
+              <Link href={`/product?id=${item.product.id}`} className="vx-row">
+                <Bottle hue={item.hue} level={windowLeft(item, DEMO_TODAY)} kind={bottleKind(item.product.name)} size={44} status={v.status} />
+                <span className="vx-row__body">
+                  <span className="vx-row__title">{item.product.name}</span>
+                  <span className="vx-row__sub" data-status={v.status}>
+                    <span className="vx-dot" />
+                    <b className="vx-row__word">{WORD[v.status]}</b> · {reason(item, v)}
+                  </span>
+                </span>
+                <span className="vx-row__end">
+                  <b>{Math.max(0, v.daysToDeadline)} d</b>
+                  <small>to return</small>
+                </span>
+                <Icon name="chevron" />
+              </Link>
+            </li>
+          ))}
+          <UserShelf />
+        </ul>
+      </section>
+
+      <section className="vx-section" aria-labelledby="next-h">
+        <div className="vx-section__head">
+          <h2 id="next-h">Today&apos;s photo</h2>
+          <span>{shortDay(DEMO_TODAY)}</span>
+        </div>
+        <Link href={`/capture?id=${measuring.item.product.id}`} className="vx-next" aria-label={`Take today's photo for ${measuring.item.product.name}`}>
+          <span className="vx-next__face" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element -- sample selfie */}
+            <img src="/sample/selfie.jpg" alt="" />
+            <i />
+          </span>
+          <span className="vx-row__body">
+            <span className="vx-row__title">{measuring.item.product.name}</span>
+            <span className="vx-row__sub">
+              Day {mDay} of {measuring.item.product.returnWindowDays} · {measuring.item.product.concerns.map((c) => concernDef(c).label.toLowerCase()).join(", ")}
+            </span>
+          </span>
+          <span className="vx-next__cam" aria-hidden>
+            <Icon name="camera" />
+          </span>
+        </Link>
+      </section>
+
+      <LooksStrip />
+
+      <p className="vx-foot">
+        Cosmetic guidance, not medical advice. · <Link href="/agent">How it works</Link> · <Link href="/privacy">Privacy</Link>
+      </p>
+    </main>
   );
 }

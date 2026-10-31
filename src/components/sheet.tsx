@@ -155,12 +155,6 @@ export function DemoNote({ label = "Synthetic data" }: { label?: string }) {
             With the live key, the same screens call YouCam AI Skin Analysis, Skin Simulation and Look VTO.
           </li>
           <li>
-            <Icon name="checkCircle" />
-            <span>
-              Real YouCam results on the maker&apos;s own skin are on <Link href="/measured">Measured</Link>, labelled as real data.
-            </span>
-          </li>
-          <li>
             <Icon name="info" />
             <span>
               Cosmetic guidance only, not medical advice. Anonymous usage is logged to improve the demo (<Link href="/privacy">Privacy</Link>).

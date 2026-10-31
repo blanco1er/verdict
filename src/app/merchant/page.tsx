@@ -1,172 +1,117 @@
-import { NavBar } from "@/components/chrome";
-import { ProductGlyph } from "@/components/icons";
+import type { Metadata } from "next";
 import { DemoNote } from "@/components/sheet";
-import { LargeTitle } from "@/components/ui";
+import { TopBar } from "@/components/vx/top-bar";
+import { Bottle, CountUp } from "@/components/vx/live";
+import { bottleKind } from "@/components/vx/product-bits";
 import { MERCHANT_ROWS, merchantSummary, pct } from "@/lib/demo/merchant";
 
-const ROWS = MERCHANT_ROWS;
+export const metadata: Metadata = { title: "Brands · Verdict" };
 
-function standing(r: (typeof ROWS)[number]): { status: "keep" | "return" | "mixed"; label: string; note: string } {
-  if (r.overPromise) return { status: "mixed", label: "Promise > window", note: "The claim takes 12 weeks; returns close at 30 days. Customers decide on an early trend." };
-  if (r.improved < 0.3) return { status: "return", label: "Review the claim", note: "Few customers see the promised change: the claim is driving returns." };
-  return { status: "keep", label: "Badge eligible", note: "Can show “Measured with YouCam AI Skin Analysis” on reviews." };
+const ROWS = MERCHANT_ROWS;
+const HUES = [36, 200, 28, 40];
+
+function standing(r: (typeof ROWS)[number]): { status: "keep" | "return" | "mixed"; label: string } {
+  if (r.overPromise) return { status: "mixed", label: "Promise longer than the window" };
+  if (r.improved < 0.3) return { status: "return", label: "Claim drives returns" };
+  return { status: "keep", label: "Badge eligible" };
 }
 
 export default function MerchantPage() {
   const { tracking, improved, returned, worst, medianLead } = merchantSummary();
   const max = Math.max(...ROWS.map((r) => Math.max(r.improved, r.returned)));
-
   return (
-    <>
-      <NavBar title="Brands" />
-      <main className="vd-page">
-        <LargeTitle title="Brands">
-          <span>Measured efficacy per product</span>
-          <DemoNote />
-        </LargeTitle>
+    <main className="vx-page">
+      <TopBar title="Brands" trailing={<DemoNote label="Demo" />} />
+      <h1 className="vx-title">Brands</h1>
+      <p className="vx-sub">What customers measured, product by product.</p>
 
-        <div className="vd-stack">
-          <p className="vd-summary">
-            <strong>{tracking.toLocaleString("en-US")} customers</strong> are tracking {ROWS.length} products. {pct(improved)}% saw the promised change
-            before their return deadline. <strong>{worst.sku}</strong> is driving returns at {pct(worst.returned)}%.
-          </p>
+      <p className="vx-lede" style={{ marginTop: 18 }}>
+        <b>{pct(improved)}%</b> saw the promised change before their return deadline. <b>{worst.sku}</b> drives {pct(worst.returned)}% of its sales
+        back.
+      </p>
 
-          <div className="vd-panel">
-            <div className="ui-stats vd-stats">
-              <div className="ui-stat">
-                <p className="ui-stat__label">Customers tracking</p>
-                <p className="ui-stat__value">{tracking.toLocaleString("en-US")}</p>
-                <p className="ui-stat__delta">across {ROWS.length} SKUs</p>
-              </div>
-              <div className="ui-stat">
-                <p className="ui-stat__label">Saw the promise</p>
-                <p className="ui-stat__value">
-                  {pct(improved)}
-                  <small>%</small>
-                </p>
-                <p className="ui-stat__delta">measured, not self-reported</p>
-              </div>
-              <div className="ui-stat">
-                <p className="ui-stat__label">Returned</p>
-                <p className="ui-stat__value">
-                  {pct(returned)}
-                  <small>%</small>
-                </p>
-                <p className="ui-stat__delta">weighted by customers</p>
-              </div>
-              <div className="ui-stat">
-                <p className="ui-stat__label">Median verdict</p>
-                <p className="ui-stat__value">
-                  {medianLead}
-                  <small>days</small>
-                </p>
-                <p className="ui-stat__delta">before the return deadline</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="vd-cols">
-            <section aria-labelledby="b-h">
-              <div className="vd-section-title">
-                <h2 id="b-h">Improved vs returned</h2>
-                <p>share of customers</p>
-              </div>
-              <div className="vd-panel vd-panel--pad">
-                <div className="vd-bars" role="list">
-                  {ROWS.map((r) => (
-                    <div key={r.sku} className="vd-bars__row" role="listitem" aria-label={`${r.sku}: ${pct(r.improved)}% improved, ${pct(r.returned)}% returned`}>
-                      <div className="vd-bars__name">
-                        <b className="font-medium">{r.sku}</b>
-                        <span>
-                          {pct(r.improved)}% · {pct(r.returned)}%
-                        </span>
-                      </div>
-                      <div className="vd-bars__bar" aria-hidden>
-                        <span className="vd-bars__seg is-improved" style={{ width: `${(r.improved / max) * 100}%` }} />
-                        <span className="vd-bars__seg is-returned" style={{ width: `${(r.returned / max) * 100}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <ul className="vd-legend">
-                  <li>
-                    <i className="is-c1" />
-                    Promised concern improved
-                  </li>
-                  <li>
-                    <i className="is-c2" />
-                    Returned
-                  </li>
-                </ul>
-              </div>
-            </section>
-
-            <section className="ui-list-section vd-shelf" aria-labelledby="p-h">
-              <div className="ui-list__header">
-                <strong id="p-h">By product</strong>
-                <span>{ROWS.length} SKUs</span>
-              </div>
-              <ul className="ui-list">
-                {ROWS.map((r) => {
-                  const s = standing(r);
-                  return (
-                    <li key={r.sku}>
-                      <div className="ui-row">
-                        <ProductGlyph name={r.sku} />
-                        <span className="ui-row__body">
-                          <span className="ui-row__title">{r.sku}</span>
-                          <span className="vd-row-meta">
-                            <span className="vd-status" data-status={s.status}>
-                              {s.label}
-                            </span>
-                          </span>
-                          <span className="vd-row-meta">
-                            {r.promise} · {r.tracking} tracking · median verdict on day {r.medianVerdictDay}
-                          </span>
-                          <span className="vd-row-story">{s.note}</span>
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          </div>
-
-          <section className="ui-list-section" aria-labelledby="y-h">
-            <div className="ui-list__header">
-              <strong id="y-h">Why it matters</strong>
-            </div>
-            <ul className="ui-list">
-              <li>
-                <div className="ui-row">
-                  <span className="ui-row__body">
-                    <span className="ui-row__title">Returns are decided on day 29, by feel</span>
-                    <span className="ui-row__subtitle">Verdict gives the customer evidence {medianLead} days earlier (median), and the brand an efficacy score per SKU.</span>
-                  </span>
-                </div>
-              </li>
-              <li>
-                <div className="ui-row">
-                  <span className="ui-row__body">
-                    <span className="ui-row__title">Over-promising shows up before the returns do</span>
-                    <span className="ui-row__subtitle">A claim that takes 12 weeks cannot be judged in a 30-day window.</span>
-                  </span>
-                </div>
-              </li>
-              <li>
-                <div className="ui-row">
-                  <span className="ui-row__body">
-                    <span className="ui-row__title">Brands see aggregates only</span>
-                    <span className="ui-row__subtitle">Photos never leave the customer&apos;s account.</span>
-                  </span>
-                </div>
-              </li>
-            </ul>
-            <p className="ui-list__footer">All numbers on this screen are synthetic demo data.</p>
-          </section>
+      <div className="vx-stats" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+        <div className="vx-stat">
+          <b>
+            <CountUp value={tracking} />
+          </b>
+          <span>customers measuring</span>
         </div>
-      </main>
-    </>
+        <div className="vx-stat vx-stat--data">
+          <b>
+            <CountUp value={pct(improved)} suffix="%" />
+          </b>
+          <span>saw the promise</span>
+        </div>
+        <div className="vx-stat" style={{ borderTop: "0.5px solid var(--vx-line)", paddingLeft: 0, borderLeft: 0 }}>
+          <b>
+            <CountUp value={pct(returned)} suffix="%" />
+          </b>
+          <span>returned</span>
+        </div>
+        <div className="vx-stat" style={{ borderTop: "0.5px solid var(--vx-line)" }}>
+          <b>
+            <CountUp value={medianLead} suffix=" d" />
+          </b>
+          <span>earlier than the deadline</span>
+        </div>
+      </div>
+
+      <section className="vx-section" aria-labelledby="b-h">
+        <div className="vx-section__head">
+          <h2 id="b-h">By product</h2>
+          <span className="vx-legend">
+            <i className="is-up" /> improved <i className="is-back" /> returned
+          </span>
+        </div>
+        <ul className="vx-rows">
+          {ROWS.map((r, i) => {
+            const s = standing(r);
+            return (
+              <li key={r.sku} className="vx-brand">
+                <Bottle hue={HUES[i % HUES.length]} level={1 - r.returned} kind={bottleKind(r.sku)} size={46} />
+                <div className="vx-brand__body">
+                  <div className="vx-brand__top">
+                    <b>{r.sku}</b>
+                    <span className="vx-num">
+                      {pct(r.improved)}% · {pct(r.returned)}%
+                    </span>
+                  </div>
+                  <div className="vx-brand__bars" aria-label={`${pct(r.improved)}% improved, ${pct(r.returned)}% returned`}>
+                    <span className="is-up" style={{ width: `${(r.improved / max) * 100}%`, animationDelay: `${i * 90}ms` }} />
+                    <span className="is-back" style={{ width: `${(r.returned / max) * 100}%`, animationDelay: `${i * 90 + 120}ms` }} />
+                  </div>
+                  <p className="vx-row__sub" data-status={s.status}>
+                    <span className="vx-dot" />
+                    {s.label} · {r.tracking} measuring · verdict on day {r.medianVerdictDay}
+                  </p>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+
+      <section className="vx-section" aria-labelledby="y-h">
+        <div className="vx-section__head">
+          <h2 id="y-h">Why brands want it</h2>
+        </div>
+        {[
+          ["Evidence instead of a feeling", `Customers decide ${medianLead} days earlier, with measurements.`],
+          ["Over-promising shows early", "A 12-week claim cannot be judged inside a 30-day window."],
+          ["A badge that means something", "“Measured with YouCam AI Skin Analysis” on reviews."],
+        ].map(([t, d]) => (
+          <div className="vx-check" key={t}>
+            <svg className="ui-icon" viewBox="0 0 24 24" aria-hidden>
+              <path d="m5.5 12.5 4.2 4.2 8.8-9.4" />
+            </svg>
+            <div>
+              <b>{t}</b>
+              <span>{d}</span>
+            </div>
+          </div>
+        ))}
+      </section>
+    </main>
   );
 }

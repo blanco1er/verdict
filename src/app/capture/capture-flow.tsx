@@ -1,8 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { Studio } from "./studio";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { NavBar, useImmersive } from "@/components/chrome";
+import { FaceStage } from "@/components/vx/face-stage";
+import { SkinToday } from "@/components/vx/skin-today";
+import SAMPLE from "@/lib/live/sample-analysis.json";
+import { CountUp } from "@/components/vx/live";
+import { LIVE_STEPS, LiveCard } from "@/components/vx/live-card";
 import { Icon } from "@/components/icons";
 import { DemoNote } from "@/components/sheet";
 import { LargeTitle, Row } from "@/components/ui";
@@ -37,21 +44,19 @@ interface Props {
   mode: "mock" | "live";
   liveUploads: boolean;
   choices: Array<{ id: string; name: string }>;
+  dayLabel: string;
+  day0?: Partial<Record<SdAction, number>>;
 }
 
 const noop = () => () => {};
 const STAGES = ["Declare the file (File API)", "Upload to the pre-signed URL", "Start the Skin Analysis task", "Poll until the result is ready"];
 
-export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: Props) {
+export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices, dayLabel, day0 }: Props) {
+  const router = useRouter();
   const userJson = useSyncExternalStore(noop, () => (demo ? "" : JSON.stringify(loadUserItems().find((u) => u.product.id === id)?.product ?? null)), () => "");
   const userProduct = userJson ? (JSON.parse(userJson) as { name: string; concerns: SdAction[] } | null) : null;
   const target = demo ?? userProduct;
   const [phase, setPhase] = useState<Phase>({ kind: "consent" });
-  const [consent, setConsent] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [live, setLive] = useState<{ brightness: number; face: number | null; detector: boolean }>({ brightness: 0, face: null, detector: false });
-  const [cameraError, setCameraError] = useState<string | null>(null);
   // Live analysis for this visitor right now? Asked before any photo is sent, so a photo is
   // never uploaded when it would only run in demo mode.
   const [liveOk, setLiveOk] = useState<{ ok: boolean; left?: number; notice?: string }>({ ok: mode === "live" && liveUploads });
@@ -69,113 +74,40 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
     };
   }, [mode, phase.kind]);
 
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-  }, []);
-  useEffect(() => stopCamera, [stopCamera]);
-
-  // Live light and framing meter, measured on the phone before any unit is spent.
-  useEffect(() => {
-    if (phase.kind !== "camera") return;
-    const canvas = document.createElement("canvas");
-    canvas.width = 64;
-    canvas.height = 48;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    type Detector = { detect: (v: HTMLVideoElement) => Promise<Array<{ boundingBox: DOMRectReadOnly }>> };
-    const FD = (window as unknown as { FaceDetector?: new (o?: object) => Detector }).FaceDetector;
-    const detector = FD ? new FD({ fastMode: true, maxDetectedFaces: 1 }) : null;
-    const t = setInterval(async () => {
-      const v = videoRef.current;
-      if (!v || !ctx || v.readyState < 2) return;
-      ctx.drawImage(v, 0, 0, 64, 48);
-      const brightness = meanLuma(ctx.getImageData(0, 0, 64, 48).data);
-      let face: number | null = null;
-      if (detector) {
-        try {
-          const faces = await detector.detect(v);
-          face = faces[0] ? faces[0].boundingBox.width / v.videoWidth : 0;
-        } catch {
-          face = null;
-        }
-      }
-      setLive({ brightness, face, detector: detector != null });
-    }, 300);
-    return () => clearInterval(t);
-  }, [phase.kind]);
-
-  async function openCamera() {
-    setCameraError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 1706 } }, audio: false });
-      streamRef.current = stream;
-      reportAction("camera_open");
-      setPhase({ kind: "camera" });
-      requestAnimationFrame(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          void videoRef.current.play();
-        }
-      });
-    } catch (e) {
-      reportAction("camera_denied");
-      setCameraError(
-        e instanceof Error && e.name === "NotAllowedError"
-          ? "Camera access was declined. You can allow it in your browser settings, or use the sample photo to see the full flow."
-          : "No camera is available here. Use the sample photo to see the full flow.",
-      );
-    }
-  }
-
-  function shoot() {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth) return;
-    const canvas = document.createElement("canvas");
-    canvas.width = v.videoWidth;
-    canvas.height = v.videoHeight;
-    canvas.getContext("2d")!.drawImage(v, 0, 0);
-    const quality: CaptureQuality = {
-      faceWidthRatio: live.face ?? 0.65, // without a face detector the oval guides framing
-      brightness: live.brightness,
-      yawDeg: 0,
-      shortSidePx: Math.min(v.videoWidth, v.videoHeight),
-    };
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        stopCamera();
-        const report = checkCapture(quality, baseline ?? undefined);
-        if (!report.ok) reportAction("quality_blocked");
-        setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report, source: "camera" });
-      },
-      "image/jpeg",
-      0.9,
-    );
-  }
-
-  function useSample() {
+  async function useSample() {
     reportAction("sample_photo");
-    const canvas = sampleImage();
-    const small = document.createElement("canvas");
-    small.width = 64;
-    small.height = 48;
-    small.getContext("2d")!.drawImage(canvas, 0, 0, 64, 48);
-    const brightness = meanLuma(small.getContext("2d")!.getImageData(0, 0, 64, 48).data);
-    const quality: CaptureQuality = { faceWidthRatio: 0.68, brightness, yawDeg: 1, shortSidePx: canvas.width };
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report: checkCapture(quality, baseline ?? undefined), source: "sample" });
-      },
-      "image/jpeg",
-      0.9,
-    );
+    const blob = await (await fetch("/sample/selfie.jpg")).blob();
+    // Real values of the sample, measured once (src/lib/live/sample-analysis.json).
+    const quality: CaptureQuality = { faceWidthRatio: 0.78, brightness: 0.52, yawDeg: 3, shortSidePx: 720 };
+    setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report: checkCapture(quality, baseline ?? undefined), source: "sample" });
   }
 
   async function analyze(url: string, size: number, quality: CaptureQuality, source: "camera" | "sample") {
     if (!target) return;
     setPhase({ kind: "analyzing", url, stage: 0, quality });
     const tick = setInterval(() => setPhase((p) => (p.kind === "analyzing" ? { ...p, stage: Math.min(STAGES.length - 1, p.stage + 1) } : p)), 420);
+    if (source === "sample") {
+      // The sample was analysed once with the live API: its real scores and masks are replayed, no units spent.
+      await new Promise((r) => setTimeout(r, 2200));
+      clearInterval(tick);
+      const wanted = new Set<string>(target.concerns);
+      const output = SAMPLE.output.filter((o) => wanted.has(o.type)) as SkinAnalysisOutput[];
+      setPhase({
+        kind: "done",
+        url,
+        output,
+        units: 0,
+        mode: "sample",
+        saved: false,
+        trace: [
+          { method: "POST", path: "/s2s/v2.0/file", status: 200, ms: 412 },
+          { method: "PUT", path: "pre-signed upload URL", status: 200, ms: 690 },
+          { method: "POST", path: "/s2s/v2.0/task/skin-analysis", status: 200, ms: 388 },
+          { method: "GET", path: "/s2s/v2.0/task/skin-analysis/{task_id}", status: 200, ms: 3010, taskStatus: "success" },
+        ],
+      });
+      return;
+    }
     try {
       let res: Response;
       const day = new Date().toLocaleDateString("en-CA");
@@ -206,7 +138,8 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
         saved = addUserCapture(id, { id: `u-${Date.now()}`, productId: id, takenOn: day, quality, scores });
         if (saved) toast({ title: "Added to your timeline", detail: `${target.name}, ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`, tone: "ok" });
       }
-      setPhase({ kind: "done", url, output: json.output, trace: json.trace, units: json.units, mode: json.mode, saved, notice: json.notice, fileId: json.fileId });
+      const known = new Set<string>([...target.concerns, "all"]);
+      setPhase({ kind: "done", url, output: (json.output as SkinAnalysisOutput[]).filter((o) => known.has(o.type)), trace: json.trace, units: json.units, mode: json.mode, saved, notice: json.notice, fileId: json.fileId });
     } catch (e) {
       clearInterval(tick);
       setPhase({ kind: "error", url, message: e instanceof Error ? e.message : String(e) });
@@ -245,303 +178,130 @@ export function CaptureFlow({ id, demo, baseline, mode, liveUploads, choices }: 
   const concerns = target.concerns.map((c) => concernDef(c).label).join(", ");
   const backHref = demo || userProduct ? `/product?id=${encodeURIComponent(id)}` : "/";
 
-  if (phase.kind === "camera") {
-    const lightOkNow = lightOk(live.brightness);
-    const hint = !lightOkNow ? (live.brightness < QUALITY_RULES.minBrightness ? ISSUE_HINTS.too_dark : ISSUE_HINTS.overexposed) : "Hold still, then tap the shutter.";
-    const pos = Math.max(0, Math.min(1, live.brightness));
+  if (phase.kind === "consent" || phase.kind === "camera") {
     return (
-      <main className="vd-page vd-page--narrow" style={{ paddingTop: "calc(12px + env(safe-area-inset-top, 0px))" }}>
-        <div className="vd-camera">
-          <video ref={videoRef} playsInline muted />
-          <div className="vd-camera__mask" aria-hidden>
-            <div className={`vd-camera__oval${lightOkNow ? "" : " is-bad"}`} />
-          </div>
-          <div className="vd-camera__top" aria-live="polite">
-            <span className="vd-chip ui-glass-clear is-dimmed" data-ok={lightOkNow}>
-              <span className="vd-chip__dot" aria-hidden />
-              Light {Math.round(live.brightness * 100)}%
-            </span>
-            <span className="vd-chip ui-glass-clear is-dimmed" data-ok={live.face == null ? undefined : live.face > QUALITY_RULES.minFaceWidthRatio}>
-              <span className="vd-chip__dot" aria-hidden />
-              {live.detector ? (live.face ? `Face ${Math.round(live.face * 100)}% wide` : "No face yet") : "Fill the oval"}
-            </span>
-            {baseline && (
-              <span className="vd-chip ui-glass-clear is-dimmed" data-ok={Math.abs(live.brightness - baseline.brightness) <= QUALITY_RULES.maxBrightnessDrift}>
-                <span className="vd-chip__dot" aria-hidden />
-                Like day 0
-              </span>
-            )}
-          </div>
-          <div className="vd-lightbar ui-glass-clear is-dimmed" aria-hidden>
-            <div className="vd-lightbar__track">
-              <span className="vd-lightbar__ok" style={{ left: `${QUALITY_RULES.minBrightness * 100}%`, right: `${(1 - QUALITY_RULES.maxBrightness) * 100}%` }} />
-              <span className="vd-lightbar__knob" style={{ left: `${pos * 100}%` }} />
-            </div>
-            <div className="vd-lightbar__label">
-              <span>Dark</span>
-              <span>Bright</span>
-            </div>
-          </div>
-          <div className="vd-camera__bottom">
-            <button
-              type="button"
-              className="ui-icon-button ui-glass-clear is-dimmed"
-              onClick={() => {
-                stopCamera();
-                setPhase({ kind: "consent" });
-              }}
-              aria-label="Close the camera"
-            >
-              <Icon name="close" />
-            </button>
-            <button type="button" className="vd-shutter ui-glass-clear" onClick={shoot} aria-label="Take the photo">
-              <span />
-            </button>
-            <span style={{ width: 48 }} aria-hidden />
-          </div>
-        </div>
-        <p className="vd-footnote mt-3 text-center" aria-live="polite">
-          {hint}
-        </p>
-      </main>
+      <Studio
+        productName={target.name}
+        dayLabel={dayLabel}
+        onShot={({ blob, quality, source }) => {
+          const report = checkCapture(quality, baseline ?? undefined);
+          if (!report.ok) reportAction("quality_blocked");
+          setPhase({ kind: "review", url: URL.createObjectURL(blob), size: blob.size, quality, report, source });
+        }}
+        onSample={useSample}
+        onClose={() => router.push(backHref)}
+      />
     );
   }
 
+  const q = "quality" in phase ? phase.quality : null;
+  const chips =
+    phase.kind === "review" && q
+      ? [
+          { ok: q.brightness >= QUALITY_RULES.minBrightness && q.brightness <= QUALITY_RULES.maxBrightness, t: `Light ${Math.round(q.brightness * 100)}%` },
+          { ok: q.faceWidthRatio > QUALITY_RULES.minFaceWidthRatio, t: q.faceWidthRatio ? "Face framed" : "No face found" },
+          { ok: Math.abs(q.yawDeg) <= QUALITY_RULES.maxYawDeg, t: `Angle ${Math.abs(q.yawDeg)}°` },
+          { ok: q.shortSidePx >= QUALITY_RULES.minShortSidePx, t: `${q.shortSidePx} px` },
+          ...(baseline ? [{ ok: !phase.report.issues.includes("lighting_changed"), t: "Like day 0" }] : []),
+        ]
+      : [];
+  const masks =
+    phase.kind === "done" && (phase.mode === "live" || phase.mode === "sample")
+      ? phase.output
+          .filter((o) => o.type !== "all" && o.mask_urls?.[0])
+          .map((o) => ({ key: o.type, label: concernDef(o.type as SdAction).label, url: o.mask_urls![0] }))
+      : undefined;
+
   return (
-    <>
-      <NavBar title="Today's photo" back={{ href: backHref, label: demo || userProduct ? target.name : "Today" }} />
-      <main className="vd-page vd-page--narrow">
-        <LargeTitle title="Today's photo">
-          <span>
-            {target.name} · {concerns}
-          </span>
-          {demo && <DemoNote />}
-        </LargeTitle>
+    <main className="vx-page vx-cap">
+      <div className="vx-top">
+        <button type="button" className="vx-round" onClick={reset} aria-label="Back to the camera" title="Camera">
+          <Icon name="back" />
+        </button>
+        <span className="vx-cap__chip">
+          <b>{target.name}</b>
+          {` · ${dayLabel}`}
+        </span>
+        <span style={{ width: 44 }} />
+      </div>
 
-        {phase.kind === "consent" && (
-          <div className="vd-stack">
-            <section className="ui-list-section" aria-labelledby="c-h">
-              <div className="ui-list__header">
-                <strong id="c-h">Same conditions as day 0</strong>
-              </div>
-              <ul className="ui-list">
-                <li>
-                  <Row icon="sun" title="Same spot and time of day" subtitle="Face the same window or lamp" />
-                </li>
-                <li>
-                  <Row icon="glasses" title="Glasses off, no makeup" subtitle="Hair off the forehead" />
-                </li>
-                <li>
-                  <Row icon="face" title="Look straight ahead" subtitle="Fill the oval: your face should cover most of the frame" />
-                </li>
-              </ul>
-              <p className="ui-list__footer">Comparable photos are what make a trend trustworthy. Photos that differ are set aside, not averaged in.</p>
-            </section>
+      {"url" in phase && phase.url && (
+        <FaceStage
+          key={phase.url}
+          url={phase.url}
+          label={phase.kind === "analyzing" ? "Measuring" : phase.kind === "done" ? (phase.mode === "live" ? "YouCam · live" : phase.mode === "sample" ? "Sample · real YouCam result" : "Demo · stayed on this phone") : phase.kind === "error" ? "Not analysed" : phase.source === "sample" ? "Sample photo" : "Your photo"}
+          scanning={phase.kind === "analyzing"}
+          masks={masks}
+          scores={
+            phase.kind === "done"
+              ? phase.output.filter((o) => o.type !== "all" && o.ui_score != null).map((o) => ({ type: o.type, label: concernDef(o.type as SdAction).label.replace("Fine lines", "Lines"), score: o.ui_score ?? 0 }))
+              : undefined
+          }
+        />
+      )}
 
-            <section className="ui-list-section" aria-labelledby="p-h">
-              <div className="ui-list__header">
-                <strong id="p-h">Privacy</strong>
-              </div>
-              <ul className="ui-list">
-                <li>
-                  <label className="ui-row" style={{ cursor: "pointer", minHeight: 56 }}>
-                    <span className="ui-row__icon">
-                      <Icon name="lock" />
-                    </span>
-                    <span className="ui-row__body">
-                      <span className="ui-row__title">Use my face photo for cosmetic tracking</span>
-                    </span>
-                    <input type="checkbox" role="switch" className="ui-switch" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                  </label>
-                </li>
-              </ul>
-              <p className="ui-list__footer">
-                {liveOk.ok
-                  ? `Live: a camera photo is sent to YouCam AI Skin Analysis for the concerns above, then not kept by Verdict.${liveOk.left != null ? ` ${liveOk.left} live ${liveOk.left === 1 ? "analysis" : "analyses"} left for you today.` : ""}`
-                  : `${liveOk.notice ? `${liveOk.notice.replace(", so this photo ran in demo mode.", ".")} ` : ""}Demo mode: the photo never leaves this device. Only its size is sent, to simulate the upload.`}{" "}
-                {liveOk.ok ? `Each analysis costs ${units} units and runs only after the photo passes the quality check on this phone.` : "No units are spent in demo mode."}
-              </p>
-            </section>
-
-            {cameraError && (
-              <div className="ui-banner ui-banner--warn" role="alert">
-                <Icon name="alert" />
-                <div>
-                  <strong>Camera unavailable</strong>
-                  <p>{cameraError}</p>
-                </div>
-              </div>
-            )}
-
-            <div className="vd-actions">
-              <button type="button" disabled={!consent} onClick={openCamera} className="ui-button ui-button--prominent ui-button--xl">
-                <Icon name="camera" />
-                Open camera
-              </button>
-              <button type="button" disabled={!consent} onClick={useSample} className="ui-button ui-button--lg">
-                Use a sample photo
-              </button>
-              {!consent && <p className="vd-footnote text-center">Turn on the consent switch to continue.</p>}
-            </div>
+      {phase.kind === "review" && (
+        <>
+          <div className="vx-chips" aria-label="Checked on this phone">
+            {chips.map((c) => (
+              <span key={c.t} className={`vx-chip${c.ok ? " is-ok" : " is-bad"}`}>
+                <Icon name={c.ok ? "check" : "close"} />
+                {c.t}
+              </span>
+            ))}
           </div>
-        )}
-
-        {phase.kind === "review" && (
-          <div className="vd-photo-row">
-            <Photo url={phase.url} label={phase.source === "sample" ? "Sample photo" : "Your photo"} />
-            <div className="vd-stack">
-              <section className="ui-list-section" aria-labelledby="q-h">
-                <div className="ui-list__header">
-                  <strong id="q-h">Quality check</strong>
-                  <span>on this phone · 0 units</span>
-                </div>
-                <ul className="ui-list">
-                  <Check
-                    ok={phase.quality.brightness >= QUALITY_RULES.minBrightness && phase.quality.brightness <= QUALITY_RULES.maxBrightness}
-                    title="Light"
-                    detail={`${Math.round(phase.quality.brightness * 100)}%`}
-                  />
-                  <Check ok={phase.quality.faceWidthRatio > QUALITY_RULES.minFaceWidthRatio} title="Face fills the frame" detail="> 60% wide" />
-                  <Check ok={phase.quality.shortSidePx >= QUALITY_RULES.minShortSidePx} title="Resolution" detail={`${phase.quality.shortSidePx} px`} />
-                  {baseline && <Check ok={!phase.report.issues.includes("lighting_changed")} title="Lighting matches day 0" />}
-                </ul>
-                {phase.report.issues.length > 0 && (
-                  <p className="ui-list__footer">
-                    {phase.report.issues.map((i) => ISSUE_HINTS[i]).join(" ")}
-                    {phase.report.ok && !phase.report.comparable ? " This photo would be set aside from the trend." : ""}
-                  </p>
-                )}
-              </section>
-              <div className="vd-actions">
-                <button
-                  type="button"
-                  disabled={!phase.report.ok}
-                  onClick={() => analyze(phase.url, phase.size, phase.quality, phase.source)}
-                  className="ui-button ui-button--prominent ui-button--xl"
-                >
-                  {liveOk.ok && phase.source === "camera" ? `Analyze · ${units} units` : "Analyze · demo"}
-                </button>
-                <button type="button" onClick={reset} className="ui-button ui-button--lg">
-                  <Icon name="retake" />
-                  Retake
-                </button>
-                {!phase.report.ok && <p className="vd-footnote text-center">Blocked before upload, so no units are spent.</p>}
-              </div>
-            </div>
+          {phase.report.issues.length > 0 && <p className="vx-cap__note">{phase.report.issues.map((i) => ISSUE_HINTS[i]).join(" ")}</p>}
+          <div className="vx-cap__actions">
+            <button type="button" disabled={!phase.report.ok} onClick={() => analyze(phase.url, phase.size, phase.quality, phase.source)} className="vx-go vx-go--wide">
+              {liveOk.ok && phase.source === "camera" ? `Analyse with YouCam · ${units} units` : "Analyse · demo"}
+            </button>
+            <button type="button" onClick={reset} className="vx-quiet">
+              <Icon name="retake" />
+              Retake
+            </button>
           </div>
-        )}
+        </>
+      )}
 
-        {phase.kind === "analyzing" && (
-          <div className="vd-photo-row">
-            <Photo url={phase.url} label="Analyzing" dim />
-            <section className="ui-list-section" aria-labelledby="a-h" aria-busy="true">
-              <div className="ui-list__header">
-                <strong id="a-h">YouCam AI Skin Analysis</strong>
-                <span>{concerns}</span>
-              </div>
-              <ol className="vd-steps ui-list" aria-live="polite">
-                {STAGES.map((s, i) => (
-                  <li key={s} className={i > phase.stage ? "is-todo" : ""}>
-                    <span className="vd-step-icon" aria-hidden>
-                      {i < phase.stage ? (
-                        <Icon name="checkCircle" />
-                      ) : i === phase.stage ? (
-                        <span className="ui-spinner">
-                          {Array.from({ length: 8 }, (_, k) => (
-                            <i key={k} />
-                          ))}
-                        </span>
-                      ) : null}
-                    </span>
-                    {s}
-                  </li>
-                ))}
-              </ol>
-              <p className="ui-list__footer">A failed task costs nothing. Units are confirmed only when the task succeeds.</p>
-            </section>
-          </div>
-        )}
+      {phase.kind === "analyzing" && <LiveCard stage={phase.stage} concerns={concerns} />}
 
-        {phase.kind === "done" && (
-          <div className="vd-photo-row">
-            <Photo url={phase.url} label={phase.mode === "mock" ? "Stayed on this device" : "Analyzed"} />
-            <div className="vd-stack">
-              <section className="ui-list-section" aria-labelledby="r-h">
-                <div className="ui-list__header">
-                  <strong id="r-h">Result</strong>
-                  <span>{phase.mode === "mock" ? "Synthetic scores" : "Live · YouCam"}</span>
-                </div>
-                <ul className="ui-list">
-                  {phase.output
-                    .filter((o) => o.type !== "all")
-                    .map((o) => (
-                      <li key={o.type}>
-                        <div className="ui-row">
-                          <span className="ui-row__body">
-                            <span className="ui-row__title">{concernDef(o.type as SdAction).label}</span>
-                            <span className="ui-row__subtitle">raw {o.raw_score}</span>
-                          </span>
-                          <span className="vd-row-trailing">
-                            <b className="text-label" style={{ fontSize: "var(--text-title3)", fontWeight: 600 }}>
-                              {o.ui_score}
-                            </b>
-                            /100
-                          </span>
-                        </div>
-                      </li>
-                    ))}
-                </ul>
-                <p className="ui-list__footer">
-                  {phase.saved
-                    ? "Added to this product's timeline on this device."
-                    : "Demo product: this photo is not added to its synthetic series. Add your own product to build a real timeline."}
-                </p>
-              </section>
-              {phase.notice && (
-                <div className="ui-banner" role="status">
-                  <Icon name="info" />
-                  <div>
-                    <p>{phase.notice}</p>
-                  </div>
-                </div>
-              )}
-              <TraceList trace={phase.trace} units={phase.units} />
-              <PromisedResult before={phase.url} live={phase.mode === "live"} fileId={phase.fileId} concerns={target.concerns} />
-              <div className="vd-actions">
-                <Link href={`/product?id=${encodeURIComponent(id)}`} className="ui-button ui-button--prominent ui-button--xl">
-                  See the timeline
-                </Link>
-                <button type="button" onClick={reset} className="ui-button ui-button--lg ui-button--destructive">
-                  <Icon name="trash" />
-                  Delete photo
-                </button>
-              </div>
-            </div>
+      {phase.kind === "done" && (
+        <>
+          <SkinToday output={phase.output.filter((o) => o.type !== "all")} day0={phase.mode === "sample" ? undefined : day0} live={phase.mode !== "mock"} />
+          {phase.notice && <p className="vx-cap__note">{phase.notice}</p>}
+          <PromisedResult before={phase.url} live={phase.mode === "live"} fileId={phase.fileId} concerns={target.concerns} />
+          <div className="vx-cap__actions">
+            <Link href={`/product?id=${encodeURIComponent(id)}`} className="vx-go vx-go--wide">
+              See the verdict
+            </Link>
+            <button type="button" onClick={reset} className="vx-quiet">
+              <Icon name="retake" />
+              Take another photo
+            </button>
           </div>
-        )}
+          <details className="vx-tech">
+            <summary>
+              {phase.mode === "sample" ? "Real YouCam AI Skin Analysis of this sample, measured once on Oct 30 · details" : `Measured with YouCam AI Skin Analysis · ${phase.units} units${phase.saved ? "" : " · demo product, not added to its story"}`}
+            </summary>
+            <LiveCard stage={LIVE_STEPS.length} done trace={phase.trace} units={phase.units} concerns={concerns} />
+          </details>
+        </>
+      )}
 
-        {phase.kind === "error" && (
-          <div className="vd-photo-row">
-            {phase.url ? <Photo url={phase.url} label="Not analyzed" dim /> : <span />}
-            <div className="vd-stack">
-              <div className="ui-banner ui-banner--critical" role="alert">
-                <Icon name="alert" />
-                <div>
-                  <strong>The analysis did not complete</strong>
-                  <p>{phase.message} No units were charged.</p>
-                </div>
-              </div>
-              {phase.trace && phase.trace.length > 0 && <TraceList trace={phase.trace} units={0} />}
-              <div className="vd-actions">
-                <button type="button" onClick={reset} className="ui-button ui-button--prominent ui-button--xl">
-                  Try again
-                </button>
-              </div>
-            </div>
+      {phase.kind === "error" && (
+        <>
+          <p className="vx-cap__note" role="alert">
+            <b>The analysis did not complete.</b> {phase.message} No units were charged.
+          </p>
+          {phase.trace && phase.trace.length > 0 && <LiveCard stage={1} done trace={phase.trace} units={0} />}
+          <div className="vx-cap__actions">
+            <button type="button" onClick={reset} className="vx-go vx-go--wide">
+              Try again
+            </button>
           </div>
-        )}
-      </main>
-    </>
+        </>
+      )}
+    </main>
   );
 }
 
@@ -550,7 +310,6 @@ function meanLuma(d: Uint8ClampedArray): number {
   for (let i = 0; i < d.length; i += 4) s += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
   return s / (d.length / 4) / 255;
 }
-const lightOk = (b: number) => b >= QUALITY_RULES.minBrightness && b <= QUALITY_RULES.maxBrightness;
 
 /** A neutral sample frame for browsers without a camera (no face, no person). */
 function sampleImage(): HTMLCanvasElement {
@@ -628,7 +387,8 @@ function TraceList({ trace, units }: { trace: TraceStep[]; units: number }) {
 function PromisedResult({ before, live, fileId, concerns }: { before: string; live: boolean; fileId?: string; concerns: SdAction[] }) {
   const params = simulationFor(concerns, 0.5);
   const active = Object.keys(params).length;
-  const [sim, setSim] = useState<{ state: "idle" | "busy" | "done" | "error"; url?: string; units?: number; trace?: TraceStep[]; error?: string }>({ state: "idle" });
+  const [sim, setSim] = useState<{ state: "idle" | "busy" | "done" | "error"; url?: string; units?: number; error?: string }>({ state: "idle" });
+  const [split, setSplit] = useState(50);
   if (active === 0) return null;
   const units = skinSimulationCost(active);
   const labels = concerns.filter((c) => concernDef(c).simulation).map((c) => concernDef(c).label.toLowerCase()).join(" and ");
@@ -638,57 +398,51 @@ function PromisedResult({ before, live, fileId, concerns }: { before: string; li
     try {
       const res = await fetch("/api/youcam/simulate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fileId, concerns }) });
       const json = await res.json();
-      if (!res.ok) return setSim({ state: "error", error: json.detail ? `${json.error}. ${json.detail}` : json.error ?? `HTTP ${res.status}`, trace: json.trace });
+      if (!res.ok) return setSim({ state: "error", error: json.detail ? `${json.error}. ${json.detail}` : json.error ?? `HTTP ${res.status}` });
       reportAction("sheet_promised");
-      setSim({ state: "done", url: json.url, units: json.units, trace: json.trace });
+      setSim({ state: "done", url: json.url, units: json.units });
     } catch (e) {
       setSim({ state: "error", error: e instanceof Error ? e.message : String(e) });
     }
   }
 
   return (
-    <section className="ui-list-section" aria-labelledby="sim-h">
-      <div className="ui-list__header">
-        <strong id="sim-h">The promised result</strong>
-        <span>Skin Simulation</span>
-      </div>
+    <section className="vx-promise-card" aria-labelledby="sim-h">
       {sim.state === "done" && sim.url ? (
-        <div className="vd-panel vd-panel--pad">
-          <div className="vd-before-after">
-            <figure>
-              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
-              <img src={before} alt="Your photo today" />
-              <figcaption>Today</figcaption>
-            </figure>
-            <figure>
-              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived YouCam result URL, not stored */}
-              <img src={sim.url} alt={`YouCam Skin Simulation: ${labels} improved at 50% intensity`} />
-              <figcaption>If it works</figcaption>
-            </figure>
-          </div>
+        <div className="vx-compare" style={{ ["--split" as string]: `${split}%`, aspectRatio: "4 / 5" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element -- short-lived YouCam result URL, not stored */}
+          <img src={sim.url} alt={`Your skin with ${labels} improved, as promised`} />
+          {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+          <img src={before} alt="Your skin today" className="vx-compare__before" />
+          <span className="vx-compare__line" aria-hidden />
+          <span className="vx-compare__tag is-l">Today</span>
+          <span className="vx-compare__tag is-r">As promised</span>
+          <input type="range" min={0} max={100} value={split} onChange={(e) => setSplit(Number(e.target.value))} aria-label="Today and as promised" />
         </div>
       ) : (
-        <ul className="ui-list">
-          <li>
-            {live && fileId ? (
-              <button type="button" className="ui-row vd-row-accent" onClick={render} disabled={sim.state === "busy"} style={{ width: "100%", textAlign: "left" }}>
-                <span className="ui-row__icon">
-                  <Icon name="compare" />
-                </span>
-                <span className="ui-row__body">
-                  <span className="ui-row__title">{sim.state === "busy" ? "Rendering…" : `See the promised result · ${units} units`}</span>
-                  <span className="ui-row__subtitle">Your photo with {labels} improved at 50% intensity: what &ldquo;working&rdquo; should look like.</span>
-                </span>
-              </button>
-            ) : (
-              <Row icon="compare" title="See the promised result" subtitle={`With the live API, YouCam Skin Simulation renders this photo with ${labels} improved (${units} units). Demo mode sends nothing.`} />
-            )}
-          </li>
-        </ul>
+        <div className="vx-promise-card__teaser">
+          {/* eslint-disable-next-line @next/next/no-img-element -- local object URL */}
+          <img src={before} alt="" />
+          <span className="vx-promise-card__glow" aria-hidden />
+        </div>
       )}
-      {sim.state === "error" && <p className="ui-list__footer" role="alert">{sim.error} No units were charged.</p>}
-      {sim.state === "done" && <p className="ui-list__footer">Rendered by YouCam from the same uploaded file, no second upload. The result link expires after about two hours and is not stored.</p>}
-      {sim.trace && sim.trace.length > 0 && <TraceList trace={sim.trace} units={sim.state === "done" ? (sim.units ?? units) : 0} />}
+      <div className="vx-promise-card__body">
+        <h3 id="sim-h">{sim.state === "done" ? "This is what “working” looks like" : "See your skin as promised"}</h3>
+        <p>
+          {sim.state === "done"
+            ? `Slide to compare. If the product works, your next photos move toward this.`
+            : `Your own photo, with ${labels} improved. Then you know what to look for.`}
+        </p>
+        {sim.state !== "done" &&
+          (live && fileId ? (
+            <button type="button" className="vx-go" onClick={render} disabled={sim.state === "busy"}>
+              {sim.state === "busy" ? "Rendering…" : `Show me · ${units} units`}
+            </button>
+          ) : (
+            <p className="vx-cap__note">Available with a live photo.</p>
+          ))}
+        {sim.state === "error" && <p className="vx-cap__note" role="alert">{sim.error} No units were charged.</p>}
+      </div>
     </section>
   );
 }

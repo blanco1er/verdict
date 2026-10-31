@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { PageSkeleton } from "@/components/page-skeleton";
-import { DEMO_SHELF, demoItem } from "@/lib/demo/shelf";
+import { DEMO_SHELF, DEMO_TODAY, demoItem } from "@/lib/demo/shelf";
+import { daysBetween } from "@/lib/tracking/model";
 import { checkCapture } from "@/lib/tracking/quality";
 import { publicLiveEnabled, youCamMode } from "@/lib/youcam/server";
 import { CaptureFlow } from "./capture-flow";
@@ -28,6 +29,8 @@ async function Capture({ searchParams }: { searchParams: SP }) {
       mode={youCamMode()}
       liveUploads={publicLiveEnabled()}
       choices={DEMO_SHELF.map((d) => ({ id: d.product.id, name: d.product.name }))}
+      dayLabel={item ? `day ${daysBetween(item.product.purchasedOn, DEMO_TODAY)}` : "today"}
+      day0={item ? Object.fromEntries(Object.entries(item.captures[0]?.scores ?? {}).map(([k, v]) => [k, v!.ui])) : undefined}
     />
   );
 }

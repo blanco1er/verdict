@@ -3,20 +3,25 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Icon, Logo, ProductGlyph, type IconName } from "@/components/icons";
-import { statusColor } from "@/components/ui";
+import { Icon, Logo, type IconName } from "@/components/icons";
+import { Bottle } from "@/components/vx/live";
+import { bottleKind, windowLeft } from "@/components/vx/product-bits";
 import { DEMO_SHELF, DEMO_TODAY } from "@/lib/demo/shelf";
 import { computeVerdict } from "@/lib/tracking/verdict";
 
 const TABS: Array<{ href: string; label: string; icon: IconName }> = [
   { href: "/", label: "Today", icon: "today" },
+  { href: "/history", label: "Products", icon: "products" },
   { href: "/capture", label: "Photo", icon: "camera" },
+  { href: "/try", label: "Try", icon: "brush" },
   { href: "/merchant", label: "Brands", icon: "brands" },
 ];
 
 function activeTab(path: string): string {
   if (path.startsWith("/phone")) return "/phone";
   if (path.startsWith("/capture")) return "/capture";
+  if (path.startsWith("/history") || path.startsWith("/add")) return "/history";
+  if (path.startsWith("/try")) return "/try";
   if (path.startsWith("/merchant")) return "/merchant";
   return "/";
 }
@@ -123,9 +128,9 @@ export function Sidebar({ productId }: { productId?: string }) {
           const href = `/product?id=${item.product.id}`;
           return (
             <Link key={item.product.id} href={href} className="ui-nav-item vd-sidebar__product" aria-current={path.startsWith("/product") && productId === item.product.id ? "page" : undefined}>
-              <ProductGlyph name={item.product.name} size="sm" />
+              <Bottle hue={item.hue} level={windowLeft(item, DEMO_TODAY)} kind={bottleKind(item.product.name)} size={26} status={v.status} />
               <span className="min-w-0 truncate">{item.product.name}</span>
-              <span className="vd-dot" style={{ background: statusColor(v.status) }} aria-label={v.status} />
+              <span className="vx-dot" data-status={v.status} aria-label={v.status} />
             </Link>
           );
         })}
@@ -135,13 +140,6 @@ export function Sidebar({ productId }: { productId?: string }) {
         </Link>
       </div>
       <div className="ui-sidebar__footer">
-        <p className="vd-sidebar__note">
-          Synthetic data: generated scores in the documented YouCam response shape. Demo date {"Nov 5, 2026"}.
-        </p>
-        <Link href="/measured" className="ui-nav-item" aria-current={path.startsWith("/measured") ? "page" : undefined}>
-          <Icon name="checkCircle" />
-          Measured (real data)
-        </Link>
         <Link href="/phone" className="ui-nav-item" aria-current={current === "/phone" ? "page" : undefined}>
           <Icon name="phone" />
           Phone view

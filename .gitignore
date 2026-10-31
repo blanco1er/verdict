@@ -44,3 +44,6 @@ next-env.d.ts
 # local visit log and owner photos (never committed)
 /.data
 /live-photos
+
+# source images for the fictional demo products (kept outside the repository)
+/astra-produits

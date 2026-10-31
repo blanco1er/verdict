@@ -54,7 +54,7 @@ export interface YouCamClientOptions {
   skinAnalysisVersion?: "v2.0" | "v2.1";
 }
 
-type Feature = "skin-analysis" | "skin-simulation" | "look-vto";
+type Feature = "skin-analysis" | "skin-simulation" | "look-vto" | "hair-transfer" | "cloth";
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -121,7 +121,9 @@ export class YouCamClient {
 
   async analyzeSkin(source: TaskSource, actions: SkinAction[]): Promise<SkinAnalysisOutput[]> {
     const taskId = await this.runSkinAnalysis({ ...source, dst_actions: actions, format: "json" });
-    return this.waitForSkinAnalysis(taskId);
+    // The live API also returns technical entries (e.g. "resize_image"): keep only what was asked.
+    const asked = new Set<string>([...actions, "all"]);
+    return (await this.waitForSkinAnalysis(taskId)).filter((o) => asked.has(o.type));
   }
 
   /* --------------------------------------------------- skin simulation */
@@ -158,6 +160,40 @@ export class YouCamClient {
       (await this.call("GET", `/s2s/v2.0/task/look-vto/${encodeURIComponent(taskId)}`)) as SingleUrlStatusResponse,
     );
     return done.data.results!.url;
+  }
+
+  /* ------------------------------------------------- template try-ons */
+
+  /**
+   * Try-on from a YouCam catalogue template (Try tab): a makeup look, a hairstyle
+   * or an outfit applied to the user's photo. Returns the task id.
+   */
+  async runTryOn(kind: TryKind, source: TaskSource, template: { id: string; thumb: string }): Promise<string> {
+    const t = TRY_ON[kind];
+    // Clothes take the catalogue image as the garment reference; looks and hair take the template id.
+    const ref = kind === "outfit" ? { ref_file_url: template.thumb } : { template_id: template.id };
+    return this.runPaid(t.feature, t.path, { ...source, ...ref, ...t.extra }, t.units);
+  }
+
+  /** Try-on with the user's own reference: a garment photo (outfit) or a haircut photo (hair). */
+  async runTryOnWithRef(kind: Exclude<TryKind, "look">, source: TaskSource, refFileId: string): Promise<string> {
+    const t = TRY_ON[kind];
+    return this.runPaid(t.feature, t.path, { ...source, ref_file_id: refFileId, ...t.extra }, t.units);
+  }
+
+  /** Polls a try-on task; returns the result image URL (valid about 2 hours). */
+  async waitForTryOn(kind: TryKind, taskId: string): Promise<string> {
+    const t = TRY_ON[kind];
+    const done = await this.poll(taskId, async () => (await this.call("GET", `${t.path}/${encodeURIComponent(taskId)}`)) as SingleUrlStatusResponse);
+    return done.data.results!.url;
+  }
+
+  /** Free: one page of a try-on catalogue. */
+  async listTemplates(kind: TryKind, pageSize = 20, startingToken?: string): Promise<{ templates: TryTemplate[]; next_token?: string }> {
+    const qs = new URLSearchParams({ page_size: String(pageSize) });
+    if (startingToken) qs.set("starting_token", startingToken);
+    const res = (await this.call("GET", `${TRY_ON[kind].catalogue}?${qs}`)) as { data: { templates: TryTemplate[]; next_token?: string } };
+    return res.data;
   }
 
   /* --------------------------------------------------------------- units */
@@ -227,3 +263,18 @@ export class YouCamClient {
     }
   }
 }
+
+export type TryKind = "look" | "hair" | "outfit";
+export interface TryTemplate {
+  id: string;
+  title: string;
+  thumb: string;
+  category_name?: string;
+}
+
+/** Endpoints and unit costs (docs.perfectcorp.com, checked 30 Oct 2026). */
+export const TRY_ON: Record<TryKind, { feature: Feature; path: string; catalogue: string; units: number; extra?: Record<string, string> }> = {
+  look: { feature: "look-vto", path: "/s2s/v2.0/task/look-vto", catalogue: "/s2s/v2.0/task/template/look-vto", units: 2 },
+  hair: { feature: "hair-transfer", path: "/s2s/v2.1/task/hair-transfer", catalogue: "/s2s/v2.1/task/template/hair-transfer", units: 2 },
+  outfit: { feature: "cloth", path: "/s2s/v2.0/task/cloth-v4", catalogue: "/s2s/v2.0/task/template/cloth", units: 2, extra: { garment_category: "full_body" } },
+};

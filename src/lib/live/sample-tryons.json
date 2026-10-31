@@ -1,0 +1,90 @@
+{
+ "all_pure": {
+  "kind": "look",
+  "url": "/sample/try/all_pure.jpg"
+ },
+ "all_happy_rose": {
+  "kind": "look",
+  "url": "/sample/try/all_happy_rose.jpg"
+ },
+ "all_pink_perfect": {
+  "kind": "look",
+  "url": "/sample/try/all_pink_perfect.jpg"
+ },
+ "all_cool_coral": {
+  "kind": "look",
+  "url": "/sample/try/all_cool_coral.jpg"
+ },
+ "all_regal_rose": {
+  "kind": "look",
+  "url": "/sample/try/all_regal_rose.jpg"
+ },
+ "all_elegant": {
+  "kind": "look",
+  "url": "/sample/try/all_elegant.jpg"
+ },
+ "all_black_gold": {
+  "kind": "look",
+  "url": "/sample/try/all_black_gold.jpg"
+ },
+ "all_cat_eyes": {
+  "kind": "look",
+  "url": "/sample/try/all_cat_eyes.jpg"
+ },
+ "female_sleek_middle_part": {
+  "kind": "hair",
+  "url": "/sample/try/female_sleek_middle_part.jpg"
+ },
+ "female_blunt_bob": {
+  "kind": "hair",
+  "url": "/sample/try/female_blunt_bob.jpg"
+ },
+ "female_s_wave_brunette": {
+  "kind": "hair",
+  "url": "/sample/try/female_s_wave_brunette.jpg"
+ },
+ "female_messy_bun_brown": {
+  "kind": "hair",
+  "url": "/sample/try/female_messy_bun_brown.jpg"
+ },
+ "female_slicked_back_bob": {
+  "kind": "hair",
+  "url": "/sample/try/female_slicked_back_bob.jpg"
+ },
+ "female_retro_brown_waves": {
+  "kind": "hair",
+  "url": "/sample/try/female_retro_brown_waves.jpg"
+ },
+ "orange_two_piece_feminine": {
+  "kind": "outfit",
+  "url": "/sample/try/orange_two_piece_feminine.jpg"
+ },
+ "electric_breeze_feminine_everyday": {
+  "kind": "outfit",
+  "url": "/sample/try/electric_breeze_feminine_everyday.jpg"
+ },
+ "strawberry_soda_feminine_everyday": {
+  "kind": "outfit",
+  "url": "/sample/try/strawberry_soda_feminine_everyday.jpg"
+ },
+ "peacock_majesty_feminine_modern": {
+  "kind": "outfit",
+  "url": "/sample/try/peacock_majesty_feminine_modern.jpg"
+ },
+ "monochrome_swan_feminine_modern": {
+  "kind": "outfit",
+  "url": "/sample/try/monochrome_swan_feminine_modern.jpg"
+ },
+ "coral_palm_set_feminine_summer": {
+  "kind": "outfit",
+  "url": "/sample/try/coral_palm_set_feminine_summer.jpg"
+ },
+ "zen_mod_masculine_urban_classic": {
+  "kind": "outfit",
+  "url": "/sample/try/zen_mod_masculine_urban_classic.jpg"
+ },
+ "crystal_radiance_feminine_wedding": {
+  "kind": "outfit",
+  "url": "/sample/try/crystal_radiance_feminine_wedding.jpg"
+ }
+}

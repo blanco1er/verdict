@@ -12,7 +12,7 @@ export const QUALITY_RULES = {
   minFaceWidthRatio: 0.6,
   minBrightness: 0.35,
   maxBrightness: 0.85,
-  maxYawDeg: 10,
+  maxYawDeg: 15,
   /** Max brightness drift vs. the baseline capture to stay comparable. */
   maxBrightnessDrift: 0.12,
 } as const;

@@ -1,0 +1,91 @@
+{
+ "taskId": "6aqWssYMPJ22gRd43_vuENntdM63PvepfnSei6l7LTTuU1uBkOhpoN1lv68Hc_TmSpcgV8WTLEnG8Q2PXjtLzQ",
+ "takenOn": "2026-10-30",
+ "units": 12,
+ "output": [
+  {
+   "type": "acne",
+   "ui_score": 83,
+   "raw_score": 84.94700999999999,
+   "mask_urls": [
+    "/sample/masks/acne.png"
+   ]
+  },
+  {
+   "type": "firmness",
+   "ui_score": 88,
+   "raw_score": 91.8984055519104,
+   "mask_urls": [
+    "/sample/masks/firmness.png"
+   ]
+  },
+  {
+   "type": "texture",
+   "ui_score": 94,
+   "raw_score": 96.36135697364807,
+   "mask_urls": [
+    "/sample/masks/texture.png"
+   ]
+  },
+  {
+   "type": "pore",
+   "ui_score": 90,
+   "raw_score": 93.74212861061096,
+   "mask_urls": [
+    "/sample/masks/pore.png"
+   ]
+  },
+  {
+   "type": "redness",
+   "ui_score": 69,
+   "raw_score": 54.55017852783203,
+   "mask_urls": [
+    "/sample/masks/redness.png"
+   ]
+  },
+  {
+   "type": "wrinkle",
+   "ui_score": 79,
+   "raw_score": 88.1408154964447,
+   "mask_urls": [
+    "/sample/masks/wrinkle.png"
+   ]
+  },
+  {
+   "type": "radiance",
+   "ui_score": 78,
+   "raw_score": 73.49278926849365,
+   "mask_urls": [
+    "/sample/masks/radiance.png"
+   ]
+  },
+  {
+   "type": "moisture",
+   "ui_score": 78,
+   "raw_score": 71.30727171897888,
+   "mask_urls": [
+    "/sample/masks/moisture.png"
+   ]
+  },
+  {
+   "type": "all",
+   "ui_score": null,
+   "raw_score": null,
+   "mask_urls": []
+  },
+  {
+   "type": "skin_age",
+   "ui_score": null,
+   "raw_score": null,
+   "mask_urls": []
+  },
+  {
+   "type": "resize_image",
+   "ui_score": null,
+   "raw_score": null,
+   "mask_urls": [
+    "/sample/masks/resize_image.png"
+   ]
+  }
+ ]
+}

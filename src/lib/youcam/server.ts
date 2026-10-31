@@ -1,6 +1,6 @@
 import "server-only";
 import { YouCamClient } from "./client";
-import { VISITOR_LIMITS } from "../budget/plan";
+import { VISITOR_LIMITS, VisitorQuota } from "../budget/plan";
 import { LiveGate } from "./guard";
 import { UnitLedger } from "./ledger";
 import { MockTransport } from "./mock";
@@ -79,4 +79,16 @@ export function liveGate(): LiveGate {
     getBalance: () => getYouCam().client.getRemainingUnits(),
   });
   return gate;
+}
+
+let tryGateInstance: LiveGate | undefined;
+/** Try-ons (2 units each) get their own, larger quota, behind the same real-balance floor. */
+export function tryGate(): LiveGate {
+  tryGateInstance ??= new LiveGate({
+    publicLive: publicLiveEnabled(),
+    floor: unitFloor(),
+    getBalance: () => getYouCam().client.getRemainingUnits(),
+    quota: new VisitorQuota({ analysesPerVisitorPerDay: 12, analysesPerDayGlobal: 80, hardFloorUnits: unitFloor() }),
+  });
+  return tryGateInstance;
 }
