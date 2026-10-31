@@ -16,6 +16,9 @@ const KINDS: Array<{ kind: Kind; label: string }> = [
   { kind: "hair", label: "Hair" },
   { kind: "outfit", label: "Outfits" },
 ];
+// Largest side YouCam accepts per feature (File Specs & Errors, docs.perfectcorp.com): Look VTO
+// "long side < 1920" but its error says height < 1080; hairstyles "long side <= 1024"; clothes 4096.
+const MAX_SIDE: Record<Kind, number> = { look: 1024, hair: 1024, outfit: 1600 };
 const READY = SAMPLE_TRYONS as Record<string, { kind: string; url: string }>;
 const SAMPLE = "/sample/selfie.jpg";
 const SAMPLE_BODY = "/sample/body.jpg";
@@ -98,7 +101,7 @@ export function TryView() {
       const form = new FormData();
       form.set("kind", kind);
       form.set("template", t.id);
-      form.set("photo", await fitPhoto(base));
+      form.set("photo", await fitPhoto(base, MAX_SIDE[kind]));
       const res = await fetch("/api/youcam/try", { method: "POST", body: form });
       const j = await readTry(res);
       const url = j.url;
@@ -133,8 +136,8 @@ export function TryView() {
       const base = photo.file ?? new File([await (await fetch(baseUrl)).blob()], "photo.jpg", { type: "image/jpeg" });
       const form = new FormData();
       form.set("kind", kind);
-      form.set("photo", await fitPhoto(base));
-      form.set("ref", await fitPhoto(ref));
+      form.set("photo", await fitPhoto(base, MAX_SIDE[kind]));
+      form.set("ref", await fitPhoto(ref, MAX_SIDE[kind]));
       const res = await fetch("/api/youcam/try", { method: "POST", body: form });
       const j = await readTry(res);
       const url = j.url;
